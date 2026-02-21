@@ -499,8 +499,11 @@ function ChampionCard({
   const [imgError, setImgError] = useState(false);
 
   // Determine display rarity for styling
-  const displayRarity = champion.rarity === 'FA' ? 'FA' : champion.rarity;
-  const colors = RARITY_COLORS[displayRarity] ?? RARITY_COLORS.Basic;
+  // For Whale Watching (1-of-1 cards), use the active rarity tab so the card image and marketplace URL match the selected tab
+  const displayRarity: RarityFilter = (champion.is1of1 && activeRarityFilter !== 'all')
+    ? activeRarityFilter
+    : (champion.rarity === 'FA' ? 'FA' : (champion.rarity as RarityFilter));
+  const colors = RARITY_COLORS[displayRarity as string] ?? RARITY_COLORS.Basic;
 
   // For price display, use the active rarity filter (or champion's own rarity for "all" tab)
   const priceRarity = activeRarityFilter !== 'all' && activeRarityFilter !== 'FA'
@@ -508,10 +511,16 @@ function ChampionCard({
     : (champion.rarity === 'FA' ? 'Legendary' : champion.rarity);
   const floorPrice = prices?.[priceRarity];
 
-  // Marketplace URL - for FA cards, filter by Full Art category
-  const marketplaceUrl = displayRarity === 'FA'
-    ? `https://marketplace.roninchain.com/collections/0x9e8ed4ff354bd11602255b3d8e1ed13a1bb26b4b?criteria=%5B%7B%22name%22%3A%22Card+Type%22%2C%22values%22%3A%5B%22MOKI%22%5D%7D%2C%7B%22name%22%3A%22Category%22%2C%22values%22%3A%5B%22Full+Art%22%5D%7D%5D&name=${encodeURIComponent(champion.name)}&sort=PRICE_ASC`
-    : `https://marketplace.roninchain.com/collections/0x9e8ed4ff354bd11602255b3d8e1ed13a1bb26b4b?criteria=%5B%7B%22name%22%3A%22Card+Type%22%2C%22values%22%3A%5B%22MOKI%22%5D%7D%2C%7B%22name%22%3A%22Rarity%22%2C%22values%22%3A%5B%22${displayRarity}%22%5D%7D%5D&name=${encodeURIComponent(champion.name)}&sort=PRICE_ASC`;
+  // Marketplace URL - use Champion Token ID format (correct Ronin Marketplace URL format)
+  // For 1-of-1 / Whale Watching cards: filter by Champion Token ID range + Rarity
+  // For FA: also add Category=Full%20Art filter
+  const BASE_MARKET = 'https://marketplace.roninchain.com/collections/0x9e8ed4ff354bd11602255b3d8e1ed13a1bb26b4b';
+  const champTokenId = champion.championTokenId;
+  const marketplaceUrl = champTokenId
+    ? displayRarity === 'FA'
+      ? `${BASE_MARKET}?Category=Full%20Art&Champion%20Token%20ID_max=${champTokenId}&Champion%20Token%20ID_min=${champTokenId}&Rarity=Legendary`
+      : `${BASE_MARKET}?Champion%20Token%20ID_max=${champTokenId}&Champion%20Token%20ID_min=${champTokenId}&Rarity=${encodeURIComponent(displayRarity)}`
+    : `${BASE_MARKET}?search=${encodeURIComponent(champion.name)}`;
 
   // Special border glow for Legendary (pink) and FA (gold)
   const isLegendary = displayRarity === 'Legendary';

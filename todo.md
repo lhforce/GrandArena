@@ -46,3 +46,7 @@
 - [x] Add FA tab to rarity filter (only visible for Whale Watching scheme)
 - [x] Update ChampionsScreen rarity filter logic: for Whale Watching, show all 27 champions under each tab with rarity-specific artwork
 - [x] Pull FA card images from marketplace NFT metadata
+
+## Bug Fixes Round 2
+- [x] Fix 8 Whale Watching champions (Nomad, Vagabond, Mozy, Gruyere, KingofRatz, Mahoshojo, Butthole Moki, Dracumoki) showing FA art on Legendary tab instead of pink Legendary card
+- [x] Fix marketplace card links to go to the correct card listing page (not just the collection)
