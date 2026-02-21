@@ -123,3 +123,6 @@
 
 ## Bug Fixes Round 5
 - [x] Lineup Builder results should show actual card artwork images instead of generic shield icons
+
+## Bug Fixes Round 6
+- [x] Fix "Send Contest Summary" button error on Telegram Alerts page (GA API now returns { contests: [...] } wrapper instead of flat array)

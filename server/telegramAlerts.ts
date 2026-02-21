@@ -8,9 +8,8 @@
  * 3. DRAFT contests about to open
  */
 
-import { eq, and, sql, inArray } from "drizzle-orm";
 import { getDb } from "./db";
-import { contests, users } from "../drizzle/schema";
+import { contests } from "../drizzle/schema";
 
 // ─── Telegram Bot API ───────────────────────────────────────────────────────
 
@@ -58,35 +57,103 @@ export async function sendTelegramMessage(
   }
 }
 
+// ─── GA API Helper ─────────────────────────────────────────────────────────
+
+interface GAContest {
+  _id: string;
+  name: string;
+  format: string;
+  entryFee: number;
+  prizePool: number | string;
+  maxEntries: number;
+  entries: number;
+  lineupConfig: {
+    slots: Array<{ minRarity: string; maxRarity: string }>;
+    schemeSlots?: Array<{ required: boolean }>;
+    allowDuplicateChampions?: boolean;
+    cardUsageLimitPerContest?: number;
+  };
+  contestStatus: string;
+  startDate: string;
+  endDate?: string;
+}
+
+/**
+ * Fetch contests from the GA Fantasy API.
+ * The API returns { contests: [...], total, limit, offset }.
+ */
+async function fetchGAContests(status: string): Promise<GAContest[]> {
+  try {
+    const resp = await fetch(
+      `https://fantasy.grandarena.gg/api/contests?status=${status}`
+    );
+    if (!resp.ok) return [];
+
+    const data = await resp.json();
+
+    // Handle both old (flat array) and new ({ contests: [...] }) formats
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.contests)) return data.contests;
+
+    return [];
+  } catch (err) {
+    console.error(`[Telegram] Error fetching ${status} contests:`, err);
+    return [];
+  }
+}
+
+/**
+ * Derive rarity restriction from lineupConfig slots.
+ */
+function deriveRarityRestriction(contest: GAContest): string {
+  const slots = contest.lineupConfig?.slots ?? [];
+  if (slots.length === 0) return "OPEN";
+
+  const minRarities = new Set(slots.map((s) => s.minRarity));
+  const maxRarities = new Set(slots.map((s) => s.maxRarity));
+
+  // All slots same min and max = single rarity restriction
+  if (minRarities.size === 1 && maxRarities.size === 1) {
+    const min = Array.from(minRarities)[0];
+    const max = Array.from(maxRarities)[0];
+    if (min === max) {
+      if (min === "COMMON") return "COMMON_ONLY";
+      if (min === "RARE") return "RARE_ONLY";
+      if (min === "EPIC") return "EPIC_ONLY";
+      if (min === "LEGENDARY") return "LEGENDARY_ONLY";
+    }
+    if (min === "COMMON" && max === "EPIC") return "NO_LEGENDARY";
+    if (min === "COMMON" && max === "LEGENDARY") return "OPEN";
+  }
+
+  return "OPEN";
+}
+
 // ─── Alert Formatters ───────────────────────────────────────────────────────
 
 function formatGems(gems: number): string {
   return `${gems.toLocaleString()} gems ($${(gems / 100).toFixed(2)})`;
 }
 
-function formatContestAlert(contest: {
-  name: string;
-  format: string | null;
-  entryFee: number | null;
-  prizePool: string | null;
-  maxEntries: number | null;
-  currentEntries: number | null;
-  rarityRestriction: string | null;
-  contestStatus: string | null;
-}): string {
-  const spotsLeft = (contest.maxEntries ?? 0) - (contest.currentEntries ?? 0);
-  const fillPct = contest.maxEntries
-    ? Math.round(((contest.currentEntries ?? 0) / contest.maxEntries) * 100)
-    : 0;
+function formatContestAlert(contest: GAContest): string {
+  const currentEntries = contest.entries ?? 0;
+  const maxEntries = contest.maxEntries ?? 0;
+  const spotsLeft = maxEntries > 0 ? maxEntries - currentEntries : 0;
+  const fillPct = maxEntries > 0 ? Math.round((currentEntries / maxEntries) * 100) : 0;
+  const rarity = deriveRarityRestriction(contest);
 
   let msg = `🏟️ <b>${contest.name}</b>\n`;
   msg += `📋 Format: ${contest.format ?? "Unknown"}\n`;
   msg += `💎 Entry: ${contest.entryFee ? formatGems(contest.entryFee) : "FREE"}\n`;
   msg += `🏆 Prize: ${contest.prizePool ?? "N/A"}\n`;
-  if (contest.rarityRestriction && contest.rarityRestriction !== "OPEN") {
-    msg += `⭐ Rarity: ${contest.rarityRestriction}\n`;
+  if (rarity !== "OPEN") {
+    msg += `⭐ Rarity: ${rarity}\n`;
   }
-  msg += `👥 Spots: ${spotsLeft} remaining (${fillPct}% full)\n`;
+  if (maxEntries > 0) {
+    msg += `👥 Spots: ${spotsLeft} remaining (${fillPct}% full)\n`;
+  } else {
+    msg += `👥 Entries: ${currentEntries} (unlimited)\n`;
+  }
 
   return msg;
 }
@@ -95,7 +162,6 @@ function formatContestAlert(contest: {
 
 /**
  * Check for new LIVE contests and send alerts.
- * Returns the number of alerts sent.
  */
 export async function checkNewContests(
   botToken: string,
@@ -106,23 +172,7 @@ export async function checkNewContests(
   let alertsSent = 0;
 
   try {
-    // Fetch current LIVE contests from GA API
-    const resp = await fetch(
-      "https://fantasy.grandarena.gg/api/contests?status=LIVE"
-    );
-    if (!resp.ok) return { newContests, alertsSent };
-
-    const liveContests = (await resp.json()) as Array<{
-      _id: string;
-      name: string;
-      format: string;
-      entryFee: number;
-      prizePool: string;
-      maxEntries: number;
-      currentEntries: number;
-      rarityRestriction: string;
-      status: string;
-    }>;
+    const liveContests = await fetchGAContests("LIVE");
 
     for (const contest of liveContests) {
       if (!knownContestIds.has(contest._id)) {
@@ -130,16 +180,7 @@ export async function checkNewContests(
 
         const msg =
           `🆕 <b>NEW CONTEST LIVE!</b>\n\n` +
-          formatContestAlert({
-            name: contest.name,
-            format: contest.format,
-            entryFee: contest.entryFee,
-            prizePool: contest.prizePool,
-            maxEntries: contest.maxEntries,
-            currentEntries: contest.currentEntries,
-            rarityRestriction: contest.rarityRestriction,
-            contestStatus: "LIVE",
-          }) +
+          formatContestAlert(contest) +
           `\n🔗 <a href="https://fantasy.grandarena.gg/contests">Enter Now</a>`;
 
         const sent = await sendTelegramMessage(botToken, chatId, msg);
@@ -166,44 +207,23 @@ export async function checkFillingContests(
   let alertsSent = 0;
 
   try {
-    const resp = await fetch(
-      "https://fantasy.grandarena.gg/api/contests?status=LIVE"
-    );
-    if (!resp.ok) return { fillingContests, alertsSent };
-
-    const liveContests = (await resp.json()) as Array<{
-      _id: string;
-      name: string;
-      format: string;
-      entryFee: number;
-      prizePool: string;
-      maxEntries: number;
-      currentEntries: number;
-      rarityRestriction: string;
-    }>;
+    const liveContests = await fetchGAContests("LIVE");
 
     for (const contest of liveContests) {
-      if (contest.maxEntries <= 0) continue;
+      const maxEntries = contest.maxEntries ?? 0;
+      const currentEntries = contest.entries ?? 0;
+      if (maxEntries <= 0) continue;
 
-      const fillPct = contest.currentEntries / contest.maxEntries;
+      const fillPct = currentEntries / maxEntries;
       if (fillPct >= fillThreshold && !alreadyAlerted.has(contest._id)) {
         fillingContests.push(contest._id);
 
-        const spotsLeft = contest.maxEntries - contest.currentEntries;
+        const spotsLeft = maxEntries - currentEntries;
         const emoji = fillPct >= 0.9 ? "🔴" : "🟡";
 
         const msg =
           `${emoji} <b>CONTEST FILLING FAST!</b>\n\n` +
-          formatContestAlert({
-            name: contest.name,
-            format: contest.format,
-            entryFee: contest.entryFee,
-            prizePool: contest.prizePool,
-            maxEntries: contest.maxEntries,
-            currentEntries: contest.currentEntries,
-            rarityRestriction: contest.rarityRestriction,
-            contestStatus: "LIVE",
-          }) +
+          formatContestAlert(contest) +
           `\n⚡ Only <b>${spotsLeft}</b> spots left! Enter now before it fills up!` +
           `\n🔗 <a href="https://fantasy.grandarena.gg/contests">Enter Now</a>`;
 
@@ -219,51 +239,74 @@ export async function checkFillingContests(
 }
 
 /**
- * Send a daily summary of upcoming DRAFT contests.
+ * Send a summary of upcoming OPEN and DRAFT contests.
  */
 export async function sendDraftContestSummary(
   botToken: string,
   chatId: string
 ): Promise<boolean> {
   try {
-    const resp = await fetch(
-      "https://fantasy.grandarena.gg/api/contests?status=OPEN"
-    );
-    if (!resp.ok) return false;
+    // Fetch both OPEN and LIVE contests
+    const [openContests, liveContests] = await Promise.all([
+      fetchGAContests("OPEN"),
+      fetchGAContests("LIVE"),
+    ]);
 
-    const openContests = (await resp.json()) as Array<{
-      name: string;
-      format: string;
-      entryFee: number;
-      prizePool: string;
-      maxEntries: number;
-      currentEntries: number;
-      rarityRestriction: string;
-      startDate: string;
-    }>;
+    const allContests = [...liveContests, ...openContests];
 
-    if (openContests.length === 0) return true;
+    if (allContests.length === 0) {
+      return sendTelegramMessage(
+        botToken,
+        chatId,
+        "📅 <b>CONTEST SUMMARY</b>\n\nNo active or upcoming contests at this time."
+      );
+    }
 
-    let msg = `📅 <b>UPCOMING CONTESTS</b>\n\n`;
-    for (const contest of openContests.slice(0, 10)) {
-      const startDate = new Date(contest.startDate);
-      msg += `• <b>${contest.name}</b>\n`;
-      msg += `  ${contest.format} | ${contest.entryFee ? formatGems(contest.entryFee) : "FREE"} | ${contest.prizePool ?? "N/A"}\n`;
-      if (contest.rarityRestriction && contest.rarityRestriction !== "OPEN") {
-        msg += `  ⭐ ${contest.rarityRestriction}\n`;
+    let msg = `📅 <b>CONTEST SUMMARY</b>\n\n`;
+
+    // Live contests section
+    if (liveContests.length > 0) {
+      msg += `🔴 <b>LIVE NOW (${liveContests.length})</b>\n\n`;
+      for (const contest of liveContests.slice(0, 8)) {
+        const currentEntries = contest.entries ?? 0;
+        const maxEntries = contest.maxEntries ?? 0;
+        const rarity = deriveRarityRestriction(contest);
+        const spotsInfo = maxEntries > 0
+          ? `${maxEntries - currentEntries} spots left`
+          : `${currentEntries} entries`;
+
+        msg += `• <b>${contest.name}</b>\n`;
+        msg += `  ${contest.format} | ${contest.entryFee ? formatGems(contest.entryFee) : "FREE"} | Prize: ${contest.prizePool ?? "N/A"}\n`;
+        if (rarity !== "OPEN") msg += `  ⭐ ${rarity}\n`;
+        msg += `  👥 ${spotsInfo}\n\n`;
       }
-      msg += `  🕐 Starts: ${startDate.toLocaleString()}\n\n`;
+      if (liveContests.length > 8) {
+        msg += `  ...and ${liveContests.length - 8} more live\n\n`;
+      }
     }
 
-    if (openContests.length > 10) {
-      msg += `...and ${openContests.length - 10} more\n`;
+    // Open contests section
+    if (openContests.length > 0) {
+      msg += `🟢 <b>UPCOMING (${openContests.length})</b>\n\n`;
+      for (const contest of openContests.slice(0, 8)) {
+        const startDate = new Date(contest.startDate);
+        const rarity = deriveRarityRestriction(contest);
+
+        msg += `• <b>${contest.name}</b>\n`;
+        msg += `  ${contest.format} | ${contest.entryFee ? formatGems(contest.entryFee) : "FREE"} | Prize: ${contest.prizePool ?? "N/A"}\n`;
+        if (rarity !== "OPEN") msg += `  ⭐ ${rarity}\n`;
+        msg += `  🕐 Starts: ${startDate.toLocaleString()}\n\n`;
+      }
+      if (openContests.length > 8) {
+        msg += `  ...and ${openContests.length - 8} more upcoming\n\n`;
+      }
     }
 
-    msg += `\n🔗 <a href="https://fantasy.grandarena.gg/contests">View All Contests</a>`;
+    msg += `🔗 <a href="https://fantasy.grandarena.gg/contests">View All Contests</a>`;
 
     return sendTelegramMessage(botToken, chatId, msg);
   } catch (err) {
-    console.error("[Telegram] Error sending draft summary:", err);
+    console.error("[Telegram] Error sending contest summary:", err);
     return false;
   }
 }
