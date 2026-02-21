@@ -50,3 +50,6 @@
 ## Bug Fixes Round 2
 - [x] Fix 8 Whale Watching champions (Nomad, Vagabond, Mozy, Gruyere, KingofRatz, Mahoshojo, Butthole Moki, Dracumoki) showing FA art on Legendary tab instead of pink Legendary card
 - [x] Fix marketplace card links to go to the correct card listing page (not just the collection)
+
+## Bug Fixes Round 3
+- [ ] Fix Dracumoki and Mozy showing Series art instead of pink Legendary card on Legendary tab
