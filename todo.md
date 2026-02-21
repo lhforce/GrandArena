@@ -37,6 +37,7 @@
 - [x] Auth logout test (1 test)
 - [x] Ronin proxy tests (9 tests)
 - [x] Contest router tests (9 tests)
+- [x] Lineup optimizer tests (31 tests)
 
 ## Bug Fixes
 - [x] Fix Whale Watching scheme card showing only 1 champion instead of all qualifying ones (confirmed working - 27 champions display correctly)
@@ -66,14 +67,14 @@
 - [x] Build contest data admin/dashboard UI
 
 ## Phase 2 — Interactive Contest Optimizer Web App
-- [ ] Build wallet inventory fetcher (Ronin Marketplace API for mokis + schemes + quantities)
-- [ ] Pull LIVE, OPEN, and DRAFT contests from GA API
-- [ ] Contest browser UI with full details (rules, restrictions, prize pool, entry fee, spots, max entries)
-- [ ] Contest picker + entry count selector (up to 5 entries)
-- [ ] Lineup optimizer engine (build optimal lineups from owned cards)
-- [ ] Auto-select best scheme card per lineup
-- [ ] Card lockup tracker across all entries and contests
-- [ ] 5,000 gem daily budget tracker
+- [x] Build wallet inventory fetcher (Ronin Marketplace API for mokis + schemes + quantities)
+- [x] Pull LIVE, OPEN, and DRAFT contests from GA API
+- [x] Contest browser UI with full details (rules, restrictions, prize pool, entry fee, spots, max entries)
+- [x] Contest picker + entry count selector (up to 5 entries)
+- [x] Lineup optimizer engine (build optimal lineups from owned cards)
+- [x] Auto-select best scheme card per lineup
+- [x] Card lockup tracker across all entries and contests
+- [x] 5,000 gem daily budget tracker
 - [ ] Pre-build lineups for upcoming DRAFT contests
 - [ ] Purchase recommendations (missing cards that would improve placement)
 - [ ] Hybrid mode (owned cards first, then purchase recommendations)

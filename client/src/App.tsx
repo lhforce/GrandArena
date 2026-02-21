@@ -8,6 +8,9 @@ import NotFound from "@/pages/NotFound";
 import Dashboard from "@/pages/Dashboard";
 import Contests from "@/pages/Contests";
 import WinningLineups from "@/pages/WinningLineups";
+import LineupBuilder from "@/pages/LineupBuilder";
+import MyCards from "@/pages/MyCards";
+import Settings from "@/pages/Settings";
 
 function Router() {
   return (
@@ -16,21 +19,15 @@ function Router() {
         <Route path="/" component={Dashboard} />
         <Route path="/contests" component={Contests} />
         <Route path="/winning-lineups" component={WinningLineups} />
-        <Route path="/lineup-builder">
-          <PlaceholderPage title="Lineup Builder" description="Build optimal lineups for upcoming contests based on your owned cards." />
-        </Route>
-        <Route path="/my-cards">
-          <PlaceholderPage title="My Cards" description="View and manage your card inventory from your Ronin wallet." />
-        </Route>
+        <Route path="/lineup-builder" component={LineupBuilder} />
+        <Route path="/my-cards" component={MyCards} />
         <Route path="/champion-stats">
           <PlaceholderPage title="Champion Stats" description="Performance rankings and stats from GATracker data." />
         </Route>
         <Route path="/telegram-alerts">
           <PlaceholderPage title="Telegram Alerts" description="Configure alerts for new contests and filling contests." />
         </Route>
-        <Route path="/settings">
-          <PlaceholderPage title="Settings" description="Wallet address, gem budget, and account preferences." />
-        </Route>
+        <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
       </Switch>
     </DashboardLayout>

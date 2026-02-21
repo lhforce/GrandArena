@@ -3,6 +3,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { contestRouter } from "./contestRouter";
+import { lineupRouter } from "./lineupRouter";
 import { z } from "zod";
 
 const GRAPHQL_URL = 'https://marketplace-graphql.skymavis.com/graphql';
@@ -33,6 +34,9 @@ export const appRouter = router({
 
   // Contest optimizer routes
   contests: contestRouter,
+
+  // Lineup builder routes
+  lineup: lineupRouter,
 
   /**
    * Proxy: Fetch all Grand Arena MOKI cards owned by a wallet address
