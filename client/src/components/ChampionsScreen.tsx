@@ -3,6 +3,11 @@
  * Design: Premium Dark Gaming Dashboard
  * Shows card artwork, ownership status, marketplace prices
  * Uses tRPC backend proxy to bypass Ronin Marketplace CORS restrictions
+ *
+ * Special Whale Watching mode:
+ * - All 27 champions shown under every rarity tab (Basic/Rare/Epic/Legendary/FA)
+ * - Each tab shows the rarity-specific card artwork
+ * - FA tab only visible for Whale Watching scheme
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -17,7 +22,7 @@ interface ChampionsScreenProps {
 }
 
 type FilterMode = 'all' | 'owned' | 'not-owned';
-type RarityFilter = 'all' | 'Basic' | 'Rare' | 'Epic' | 'Legendary';
+type RarityFilter = 'all' | 'Basic' | 'Rare' | 'Epic' | 'Legendary' | 'FA';
 
 const RARITY_COLORS: Record<string, { border: string; text: string; bg: string }> = {
   Basic: {
@@ -36,6 +41,13 @@ const RARITY_COLORS: Record<string, { border: string; text: string; bg: string }
     bg: 'oklch(0.55 0.22 295 / 15%)',
   },
   Legendary: {
+    // Pink/holographic for 1-of-1 Legendary
+    border: 'oklch(0.72 0.22 340)',
+    text: 'oklch(0.85 0.2 340)',
+    bg: 'oklch(0.72 0.22 340 / 15%)',
+  },
+  FA: {
+    // Gold/bronze for Full Art
     border: 'oklch(0.75 0.18 60)',
     text: 'oklch(0.82 0.18 60)',
     bg: 'oklch(0.75 0.18 60 / 15%)',
@@ -54,7 +66,8 @@ export default function ChampionsScreen({ scheme, walletAddress, onBack }: Champ
   const [pricesEnabled, setPricesEnabled] = useState(false);
   const priceLoadRef = useRef(false);
 
-  const champions = scheme.qualifyingChampions;
+  const isWhaleWatching = scheme.hasMultiRarity === true;
+  const baseChampions = scheme.qualifyingChampions;
 
   // Fetch owned champions via tRPC proxy
   const { data: walletData, isLoading: loadingOwned } = trpc.getWalletChampions.useQuery(
@@ -68,13 +81,36 @@ export default function ChampionsScreen({ scheme, walletAddress, onBack }: Champ
     }
   }, [walletData]);
 
+  /**
+   * For Whale Watching: build virtual champion entries per rarity tab.
+   * Each champion appears once per rarity with the correct rarity-specific image.
+   * For non-Whale Watching schemes: use champions as-is.
+   */
+  const champions = useMemo(() => {
+    if (!isWhaleWatching || rarityFilter === 'all') {
+      // For "All" tab in Whale Watching, show each champion once (their base rarity image)
+      return baseChampions;
+    }
+    // For a specific rarity tab in Whale Watching, show all 27 with that rarity's artwork
+    return baseChampions.map(c => {
+      const rarityImage = c.rarityImages?.[rarityFilter] ?? c.image;
+      return {
+        ...c,
+        // Override the displayed image and rarity for this tab
+        image: rarityImage || c.image,
+        rarity: rarityFilter === 'FA' ? 'FA' : rarityFilter,
+        // Keep original championTokenId for ownership check
+      };
+    });
+  }, [baseChampions, isWhaleWatching, rarityFilter]);
+
   // Get unique champion names for unowned champions
   const unownedNames = useMemo(() => {
-    const names = champions
+    const names = baseChampions
       .filter(c => !ownedIds.has(c.championTokenId))
       .map(c => c.name);
     return Array.from(new Set(names));
-  }, [champions, ownedIds]);
+  }, [baseChampions, ownedIds]);
 
   // tRPC utils for manual queries
   const utils = trpc.useUtils();
@@ -88,7 +124,6 @@ export default function ChampionsScreen({ scheme, walletAddress, onBack }: Champ
     setPricesEnabled(true);
     setFloorPrices(new Map());
 
-    // Process in batches of 6 names at a time
     const BATCH_SIZE = 6;
     const batches: string[][] = [];
     for (let i = 0; i < unownedNames.length; i += BATCH_SIZE) {
@@ -132,7 +167,13 @@ export default function ChampionsScreen({ scheme, walletAddress, onBack }: Champ
 
     if (filterMode === 'owned') result = result.filter(c => ownedIds.has(c.championTokenId));
     if (filterMode === 'not-owned') result = result.filter(c => !ownedIds.has(c.championTokenId));
-    if (rarityFilter !== 'all') result = result.filter(c => c.rarity === rarityFilter);
+
+    // For non-Whale Watching, apply rarity filter normally
+    if (!isWhaleWatching && rarityFilter !== 'all') {
+      result = result.filter(c => c.rarity === rarityFilter);
+    }
+    // For Whale Watching, rarity filtering is already handled by the `champions` memo above
+
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(c => c.name.toLowerCase().includes(q));
@@ -149,17 +190,23 @@ export default function ChampionsScreen({ scheme, walletAddress, onBack }: Champ
       });
     } else if (sortBy === 'price') {
       result.sort((a, b) => {
-        const pa = floorPrices.get(a.name)?.[a.rarity] ?? Infinity;
-        const pb = floorPrices.get(b.name)?.[b.rarity] ?? Infinity;
+        const activeRarity = rarityFilter !== 'all' ? rarityFilter : a.rarity;
+        const pa = floorPrices.get(a.name)?.[activeRarity] ?? Infinity;
+        const pb = floorPrices.get(b.name)?.[activeRarity] ?? Infinity;
         return pa - pb;
       });
     }
 
     return result;
-  }, [champions, filterMode, rarityFilter, search, sortBy, ownedIds, floorPrices]);
+  }, [champions, filterMode, rarityFilter, search, sortBy, ownedIds, floorPrices, isWhaleWatching]);
 
-  const ownedCount = champions.filter(c => ownedIds.has(c.championTokenId)).length;
+  const ownedCount = baseChampions.filter(c => ownedIds.has(c.championTokenId)).length;
   const shortAddress = walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : null;
+
+  // Rarity tabs: add FA only for Whale Watching
+  const rarityTabs: RarityFilter[] = isWhaleWatching
+    ? ['all', 'Basic', 'Rare', 'Epic', 'Legendary', 'FA']
+    : ['all', 'Basic', 'Rare', 'Epic', 'Legendary'];
 
   return (
     <div className="min-h-screen arena-bg">
@@ -215,7 +262,7 @@ export default function ChampionsScreen({ scheme, walletAddress, onBack }: Champ
           <div className="flex items-center gap-2 text-sm">
             <span className="text-muted-foreground">Qualifying:</span>
             <span className="font-bold text-gold" style={{ fontFamily: 'Rajdhani, sans-serif' }}>
-              {champions.length} Champions
+              {baseChampions.length} Champions
             </span>
           </div>
           {walletAddress && !loadingOwned && (
@@ -225,7 +272,7 @@ export default function ChampionsScreen({ scheme, walletAddress, onBack }: Champ
                 <CheckCircle className="w-3.5 h-3.5" style={{ color: 'oklch(0.65 0.18 145)' }} />
                 <span className="text-muted-foreground">Owned:</span>
                 <span className="font-bold" style={{ color: 'oklch(0.65 0.18 145)', fontFamily: 'Rajdhani, sans-serif' }}>
-                  {ownedCount}/{champions.length}
+                  {ownedCount}/{baseChampions.length}
                 </span>
               </div>
             </>
@@ -318,9 +365,10 @@ export default function ChampionsScreen({ scheme, walletAddress, onBack }: Champ
           )}
 
           {/* Rarity filter */}
-          <div className="flex gap-1">
-            {(['all', 'Basic', 'Rare', 'Epic', 'Legendary'] as RarityFilter[]).map(r => {
+          <div className="flex gap-1 flex-wrap">
+            {rarityTabs.map(r => {
               const colors = r !== 'all' ? RARITY_COLORS[r] : null;
+              const isFA = r === 'FA';
               return (
                 <button
                   key={r}
@@ -338,6 +386,12 @@ export default function ChampionsScreen({ scheme, walletAddress, onBack }: Champ
                       : 'oklch(1 0 0 / 10%)'}`,
                     fontFamily: 'Rajdhani, sans-serif',
                     letterSpacing: '0.02em',
+                    // FA tab gets a special shimmer treatment
+                    ...(isFA && rarityFilter !== 'FA' ? {
+                      background: 'linear-gradient(135deg, oklch(0.75 0.18 60 / 8%), oklch(0.72 0.22 340 / 8%))',
+                      border: '1px solid oklch(0.75 0.18 60 / 25%)',
+                      color: 'oklch(0.75 0.15 60)',
+                    } : {}),
                   }}
                 >
                   {r === 'all' ? 'All' : r}
@@ -369,6 +423,27 @@ export default function ChampionsScreen({ scheme, walletAddress, onBack }: Champ
             {displayChampions.length} shown
           </div>
         </div>
+
+        {/* Whale Watching rarity info banner */}
+        {isWhaleWatching && rarityFilter !== 'all' && (
+          <div className="mt-3 px-3 py-2 rounded-lg text-xs"
+            style={{
+              background: rarityFilter === 'FA'
+                ? 'linear-gradient(135deg, oklch(0.75 0.18 60 / 10%), oklch(0.72 0.22 340 / 10%))'
+                : `${RARITY_COLORS[rarityFilter]?.bg ?? 'oklch(0.55 0.03 250 / 15%)'}`,
+              border: `1px solid ${rarityFilter === 'FA'
+                ? 'oklch(0.75 0.18 60 / 30%)'
+                : `${RARITY_COLORS[rarityFilter]?.border ?? 'oklch(0.55 0.03 250)'} / 30%`}`,
+              color: rarityFilter === 'FA'
+                ? 'oklch(0.82 0.18 60)'
+                : RARITY_COLORS[rarityFilter]?.text ?? 'oklch(0.7 0.04 250)',
+            }}>
+            {rarityFilter === 'FA'
+              ? `Showing Full Art (FA) versions of all ${baseChampions.length} 1-of-1 Mokis — these are the rarest cards in the game.`
+              : `Showing ${rarityFilter} versions of all ${baseChampions.length} 1-of-1 Mokis — every 1-of-1 Moki exists in all rarities.`
+            }
+          </div>
+        )}
       </div>
 
       {/* Champions Grid */}
@@ -386,13 +461,14 @@ export default function ChampionsScreen({ scheme, walletAddress, onBack }: Champ
               const prices = floorPrices.get(champion.name);
               return (
                 <ChampionCard
-                  key={`${champion.championTokenId}-${champion.rarity}`}
+                  key={`${champion.championTokenId}-${rarityFilter}-${i}`}
                   champion={champion}
                   isOwned={isOwned}
                   prices={prices}
                   hasWallet={!!walletAddress}
                   pricesEnabled={pricesEnabled}
                   index={i}
+                  activeRarityFilter={rarityFilter}
                 />
               );
             })}
@@ -410,6 +486,7 @@ function ChampionCard({
   hasWallet,
   pricesEnabled,
   index,
+  activeRarityFilter,
 }: {
   champion: Champion;
   isOwned: boolean;
@@ -417,21 +494,47 @@ function ChampionCard({
   hasWallet: boolean;
   pricesEnabled: boolean;
   index: number;
+  activeRarityFilter: RarityFilter;
 }) {
   const [imgError, setImgError] = useState(false);
-  const colors = RARITY_COLORS[champion.rarity] ?? RARITY_COLORS.Basic;
-  const floorPrice = prices?.[champion.rarity];
 
-  const marketplaceUrl = `https://marketplace.roninchain.com/collections/0x9e8ed4ff354bd11602255b3d8e1ed13a1bb26b4b?criteria=%5B%7B%22name%22%3A%22Card+Type%22%2C%22values%22%3A%5B%22MOKI%22%5D%7D%2C%7B%22name%22%3A%22Rarity%22%2C%22values%22%3A%5B%22${champion.rarity}%22%5D%7D%5D&name=${encodeURIComponent(champion.name)}&sort=PRICE_ASC`;
+  // Determine display rarity for styling
+  const displayRarity = champion.rarity === 'FA' ? 'FA' : champion.rarity;
+  const colors = RARITY_COLORS[displayRarity] ?? RARITY_COLORS.Basic;
+
+  // For price display, use the active rarity filter (or champion's own rarity for "all" tab)
+  const priceRarity = activeRarityFilter !== 'all' && activeRarityFilter !== 'FA'
+    ? activeRarityFilter
+    : (champion.rarity === 'FA' ? 'Legendary' : champion.rarity);
+  const floorPrice = prices?.[priceRarity];
+
+  // Marketplace URL - for FA cards, filter by Full Art category
+  const marketplaceUrl = displayRarity === 'FA'
+    ? `https://marketplace.roninchain.com/collections/0x9e8ed4ff354bd11602255b3d8e1ed13a1bb26b4b?criteria=%5B%7B%22name%22%3A%22Card+Type%22%2C%22values%22%3A%5B%22MOKI%22%5D%7D%2C%7B%22name%22%3A%22Category%22%2C%22values%22%3A%5B%22Full+Art%22%5D%7D%5D&name=${encodeURIComponent(champion.name)}&sort=PRICE_ASC`
+    : `https://marketplace.roninchain.com/collections/0x9e8ed4ff354bd11602255b3d8e1ed13a1bb26b4b?criteria=%5B%7B%22name%22%3A%22Card+Type%22%2C%22values%22%3A%5B%22MOKI%22%5D%7D%2C%7B%22name%22%3A%22Rarity%22%2C%22values%22%3A%5B%22${displayRarity}%22%5D%7D%5D&name=${encodeURIComponent(champion.name)}&sort=PRICE_ASC`;
+
+  // Special border glow for Legendary (pink) and FA (gold)
+  const isLegendary = displayRarity === 'Legendary';
+  const isFA = displayRarity === 'FA';
 
   return (
     <div
       className="champion-card group relative rounded-xl overflow-hidden"
       style={{
-        background: 'oklch(0.16 0.025 260)',
+        background: isLegendary
+          ? 'linear-gradient(160deg, oklch(0.18 0.04 340), oklch(0.15 0.02 260))'
+          : isFA
+            ? 'linear-gradient(160deg, oklch(0.18 0.04 60), oklch(0.15 0.02 260))'
+            : 'oklch(0.16 0.025 260)',
         border: `1px solid ${isOwned ? 'oklch(0.55 0.18 145 / 50%)' : colors.border + ' / 30%'}`,
         animationDelay: `${Math.min(index * 25, 400)}ms`,
-        boxShadow: isOwned ? '0 0 12px oklch(0.55 0.18 145 / 20%)' : 'none',
+        boxShadow: isOwned
+          ? '0 0 12px oklch(0.55 0.18 145 / 20%)'
+          : isLegendary
+            ? '0 0 16px oklch(0.72 0.22 340 / 15%)'
+            : isFA
+              ? '0 0 16px oklch(0.75 0.18 60 / 15%)'
+              : 'none',
       }}
     >
       {/* Card Image */}
@@ -463,17 +566,18 @@ function ChampionCard({
           </div>
         )}
 
-        {/* 1 of 1 badge */}
-        {champion.is1of1 && (
-          <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[9px] font-bold"
-            style={{
-              background: 'oklch(0.75 0.18 60 / 90%)',
-              color: 'oklch(0.12 0.02 260)',
-              fontFamily: 'Rajdhani, sans-serif',
-            }}>
-            1/1
-          </div>
-        )}
+        {/* Rarity badge top-right */}
+        <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[9px] font-bold"
+          style={{
+            background: isFA
+              ? 'linear-gradient(135deg, oklch(0.75 0.18 60 / 90%), oklch(0.72 0.22 340 / 90%))'
+              : `${colors.bg.replace('15%', '90%')}`,
+            color: isFA ? 'oklch(0.12 0.02 260)' : colors.text,
+            fontFamily: 'Rajdhani, sans-serif',
+            border: `1px solid ${colors.border}`,
+          }}>
+          {isFA ? 'FA' : '1/1'}
+        </div>
 
         {/* Marketplace link overlay */}
         <a
@@ -499,19 +603,21 @@ function ChampionCard({
           {champion.name}
         </h3>
 
-        {/* Rarity badge + floor price for this rarity */}
+        {/* Rarity badge + floor price */}
         <div className="mt-1 flex items-center justify-between gap-1">
           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded"
             style={{
-              background: colors.bg,
+              background: isFA
+                ? 'linear-gradient(135deg, oklch(0.75 0.18 60 / 20%), oklch(0.72 0.22 340 / 20%))'
+                : colors.bg,
               color: colors.text,
               fontFamily: 'Rajdhani, sans-serif',
               letterSpacing: '0.05em',
             }}>
-            {champion.rarity.toUpperCase()}
+            {isFA ? 'FULL ART' : displayRarity.toUpperCase()}
           </span>
 
-          {/* Floor price for this rarity */}
+          {/* Floor price for active rarity */}
           {!isOwned && pricesEnabled && prices !== undefined && (
             <span className="text-[9px] font-bold"
               style={{ color: floorPrice ? 'oklch(0.82 0.18 60)' : 'oklch(0.45 0.02 260)', fontFamily: 'Rajdhani, sans-serif' }}>

@@ -6,6 +6,7 @@ export interface Champion {
   tokenId: number;
   fur: string;
   is1of1: boolean;
+  rarityImages?: Record<string, string | null>;
 }
 
 export interface SchemeCard {
@@ -16,6 +17,7 @@ export interface SchemeCard {
   hasTraitFilter: boolean;
   qualifyingChampionCount: number;
   qualifyingChampions: Champion[];
+  hasMultiRarity?: boolean;
 }
 
 export interface GameData {

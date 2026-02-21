@@ -39,3 +39,10 @@
 
 ## Bug Fixes
 - [x] Fix Whale Watching scheme card showing only 1 champion instead of all qualifying ones (confirmed working - 27 champions display correctly)
+
+## Whale Watching Multi-Rarity Update
+- [x] Fetch all rarity variants (Basic/Rare/Epic/Legendary/FA) for all 27 Whale Watching champions from Ronin Marketplace
+- [x] Update game-data.json to store per-rarity card images for 1-of-1 champions
+- [x] Add FA tab to rarity filter (only visible for Whale Watching scheme)
+- [x] Update ChampionsScreen rarity filter logic: for Whale Watching, show all 27 champions under each tab with rarity-specific artwork
+- [x] Pull FA card images from marketplace NFT metadata

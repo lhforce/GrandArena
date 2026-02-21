@@ -257,3 +257,79 @@ describe("auth.logout", () => {
     expect(clearedCookies).toHaveLength(1);
   });
 });
+
+describe("Whale Watching multi-rarity support", () => {
+  it("game data has hasMultiRarity flag on Whale Watching scheme", async () => {
+    // Verify the game data JSON has the correct structure for Whale Watching
+    const { readFileSync } = await import("fs");
+    const { resolve } = await import("path");
+    const gameData = JSON.parse(
+      readFileSync(resolve(__dirname, "../client/public/game-data.json"), "utf-8")
+    );
+
+    const whale = gameData.schemes.find((s: { name: string }) =>
+      s.name.toLowerCase().includes("whale")
+    );
+    expect(whale).toBeDefined();
+    expect(whale.hasMultiRarity).toBe(true);
+  });
+
+  it("all 27 Whale Watching champions have rarityImages with 5 rarities", async () => {
+    const { readFileSync } = await import("fs");
+    const { resolve } = await import("path");
+    const gameData = JSON.parse(
+      readFileSync(resolve(__dirname, "../client/public/game-data.json"), "utf-8")
+    );
+
+    const whale = gameData.schemes.find((s: { name: string }) =>
+      s.name.toLowerCase().includes("whale")
+    );
+    expect(whale.qualifyingChampions).toHaveLength(27);
+
+    for (const champ of whale.qualifyingChampions) {
+      expect(champ.rarityImages).toBeDefined();
+      expect(champ.rarityImages).toHaveProperty("Basic");
+      expect(champ.rarityImages).toHaveProperty("Rare");
+      expect(champ.rarityImages).toHaveProperty("Epic");
+      expect(champ.rarityImages).toHaveProperty("Legendary");
+      expect(champ.rarityImages).toHaveProperty("FA");
+    }
+  });
+
+  it("all FA images are non-null strings", async () => {
+    const { readFileSync } = await import("fs");
+    const { resolve } = await import("path");
+    const gameData = JSON.parse(
+      readFileSync(resolve(__dirname, "../client/public/game-data.json"), "utf-8")
+    );
+
+    const whale = gameData.schemes.find((s: { name: string }) =>
+      s.name.toLowerCase().includes("whale")
+    );
+
+    const missingFA = whale.qualifyingChampions.filter(
+      (c: { name: string; rarityImages: Record<string, string | null> }) =>
+        !c.rarityImages?.FA
+    );
+    expect(missingFA).toHaveLength(0);
+  });
+
+  it("Legendary images are different from Rare images (pink vs standard)", async () => {
+    const { readFileSync } = await import("fs");
+    const { resolve } = await import("path");
+    const gameData = JSON.parse(
+      readFileSync(resolve(__dirname, "../client/public/game-data.json"), "utf-8")
+    );
+
+    const whale = gameData.schemes.find((s: { name: string }) =>
+      s.name.toLowerCase().includes("whale")
+    );
+
+    // At least some champions should have different Legendary vs Rare images
+    const hasDifferentImages = whale.qualifyingChampions.some(
+      (c: { rarityImages: Record<string, string | null> }) =>
+        c.rarityImages?.Legendary !== c.rarityImages?.Rare
+    );
+    expect(hasDifferentImages).toBe(true);
+  });
+});
