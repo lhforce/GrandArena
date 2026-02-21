@@ -38,6 +38,8 @@
 - [x] Ronin proxy tests (9 tests)
 - [x] Contest router tests (9 tests)
 - [x] Lineup optimizer tests (31 tests)
+- [x] Champion stats tests (35 tests)
+- [x] Telegram credential tests (2 tests)
 
 ## Bug Fixes
 - [x] Fix Whale Watching scheme card showing only 1 champion instead of all qualifying ones (confirmed working - 27 champions display correctly)
@@ -80,15 +82,23 @@
 - [ ] Hybrid mode (owned cards first, then purchase recommendations)
 
 ## Phase 3 — GATracker Performance Data Integration
-- [ ] Scrape champion performance data from GATracker Meta tab
-- [ ] Hourly refresh of performance data
-- [ ] Rank champions by scheme-relevant stats (kills, balls, wart, combo, trait+winrate)
-- [ ] Show raw performance numbers on each card in UI
+- [x] Build champion performance model from GATracker class averages + fur rarity multipliers
+- [x] V4 scoring engine (85pts/kill, 40pts/ball, wart distance, +200 win bonus, rarity multipliers)
+- [x] Scheme-relevance scoring (weighted scoring per scheme category: kills, balls, wart, win, combo, trait, rarity, loss, score)
+- [x] Champion Stats page with rankings table, filtering (rarity/class/scheme), and pagination
+- [x] Class performance averages reference table (from GATracker META)
+- [x] Stats router with rankings, summary, class averages, and refresh procedures
+- [x] Database persistence for champion stats
+- [ ] Hourly auto-refresh of performance data (currently manual refresh)
 
 ## Phase 4 — Telegram Alerts
-- [ ] Alert when new contests go live
-- [ ] Alert when contests are filling up fast (spots running low)
-- [ ] Configure Telegram bot integration
+- [x] Telegram bot integration (send messages via bot API)
+- [x] New contest live alerts (detects LIVE status transitions)
+- [x] Filling fast alerts (75%+ capacity warning, 90% escalation)
+- [x] Contest summary on demand (sends upcoming OPEN/DRAFT contests)
+- [x] Contest monitor with configurable interval (default 5 min)
+- [x] Telegram Alerts page with status, test, start/stop monitor, and summary controls
+- [x] Environment variables for TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
 
 ## Phase 5 — Multi-User Architecture
 - [ ] User settings layer (wallet address, personal config)

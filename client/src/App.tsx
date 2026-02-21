@@ -10,6 +10,8 @@ import Contests from "@/pages/Contests";
 import WinningLineups from "@/pages/WinningLineups";
 import LineupBuilder from "@/pages/LineupBuilder";
 import MyCards from "@/pages/MyCards";
+import ChampionStats from "@/pages/ChampionStats";
+import TelegramAlerts from "@/pages/TelegramAlerts";
 import Settings from "@/pages/Settings";
 
 function Router() {
@@ -21,30 +23,12 @@ function Router() {
         <Route path="/winning-lineups" component={WinningLineups} />
         <Route path="/lineup-builder" component={LineupBuilder} />
         <Route path="/my-cards" component={MyCards} />
-        <Route path="/champion-stats">
-          <PlaceholderPage title="Champion Stats" description="Performance rankings and stats from GATracker data." />
-        </Route>
-        <Route path="/telegram-alerts">
-          <PlaceholderPage title="Telegram Alerts" description="Configure alerts for new contests and filling contests." />
-        </Route>
+        <Route path="/champion-stats" component={ChampionStats} />
+        <Route path="/telegram-alerts" component={TelegramAlerts} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
       </Switch>
     </DashboardLayout>
-  );
-}
-
-function PlaceholderPage({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-gold">{title}</h1>
-        <p className="text-muted-foreground text-sm mt-1">{description}</p>
-      </div>
-      <div className="flex items-center justify-center py-16 text-muted-foreground">
-        <p>Coming soon — this feature is being built.</p>
-      </div>
-    </div>
   );
 }
 
