@@ -8,6 +8,13 @@
       "when": 1771645050672,
       "tag": "0000_left_doctor_doom",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1771680089146,
+      "tag": "0001_fluffy_star_brand",
+      "breakpoints": true
     }
   ]
 }

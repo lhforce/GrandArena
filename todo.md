@@ -36,6 +36,7 @@
 ## Tests
 - [x] Auth logout test (1 test)
 - [x] Ronin proxy tests (9 tests)
+- [x] Contest router tests (9 tests)
 
 ## Bug Fixes
 - [x] Fix Whale Watching scheme card showing only 1 champion instead of all qualifying ones (confirmed working - 27 champions display correctly)
@@ -53,3 +54,43 @@
 
 ## Bug Fixes Round 3
 - [ ] Fix Dracumoki and Mozy showing Series art instead of pink Legendary card on Legendary tab
+
+## Phase 1 — Contest Data Collection + Winning Lineup Database
+- [x] Design database schema (contests, leaderboard_entries, champions, scheme_cards, user_cards, lineups, card_lockups, performance_stats)
+- [x] Push database migrations
+- [x] Build contest scraper (fetch all COMPLETED contests from GA API)
+- [x] Build leaderboard scraper (paginate through all entries per contest)
+- [x] Build AI image recognition pipeline (identify champions/schemes from thumbnail URLs)
+- [x] Store winning lineups categorized by contest type/rules
+- [x] Build tRPC procedures for contest data access
+- [x] Build contest data admin/dashboard UI
+
+## Phase 2 — Interactive Contest Optimizer Web App
+- [ ] Build wallet inventory fetcher (Ronin Marketplace API for mokis + schemes + quantities)
+- [ ] Pull LIVE, OPEN, and DRAFT contests from GA API
+- [ ] Contest browser UI with full details (rules, restrictions, prize pool, entry fee, spots, max entries)
+- [ ] Contest picker + entry count selector (up to 5 entries)
+- [ ] Lineup optimizer engine (build optimal lineups from owned cards)
+- [ ] Auto-select best scheme card per lineup
+- [ ] Card lockup tracker across all entries and contests
+- [ ] 5,000 gem daily budget tracker
+- [ ] Pre-build lineups for upcoming DRAFT contests
+- [ ] Purchase recommendations (missing cards that would improve placement)
+- [ ] Hybrid mode (owned cards first, then purchase recommendations)
+
+## Phase 3 — GATracker Performance Data Integration
+- [ ] Scrape champion performance data from GATracker Meta tab
+- [ ] Hourly refresh of performance data
+- [ ] Rank champions by scheme-relevant stats (kills, balls, wart, combo, trait+winrate)
+- [ ] Show raw performance numbers on each card in UI
+
+## Phase 4 — Telegram Alerts
+- [ ] Alert when new contests go live
+- [ ] Alert when contests are filling up fast (spots running low)
+- [ ] Configure Telegram bot integration
+
+## Phase 5 — Multi-User Architecture
+- [ ] User settings layer (wallet address, personal config)
+- [ ] Shared winning lineup database serving multiple users
+- [ ] Subscription tier preparation (USDC on Ronin chain)
+- [ ] Role-based access control for future tiers
