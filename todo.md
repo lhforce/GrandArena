@@ -151,3 +151,6 @@
 - [x] Group cards by rarity (Legendary, Epic, Rare, Basic/Common)
 - [x] Display card images on each card
 - [x] Change contest sorting: OPEN contests always at top of lists, above LIVE
+
+## Bug Fixes Round 9
+- [x] Fix duplicate champions in lineup — optimizer must enforce uniqueness by champion name, not just tokenId

@@ -512,4 +512,87 @@ describe("performance stats differentiation", () => {
     expect(result.lineups[0].scheme).not.toBeNull();
     expect(result.lineups[0].scheme?.imageUrl).toBe("https://example.com/scheme.webp");
   });
+
+  it("prevents duplicate champion names within a single lineup", () => {
+    // Simulate owning multiple copies of the same champion at different rarities
+    const mokis: ChampionCard[] = [
+      makeChampion("Dheu", "Epic", "100", { avgKills: 6 }),
+      makeChampion("Dheu", "Epic", "101", { avgKills: 5 }),  // Same name, different tokenId
+      makeChampion("Dheu", "Rare", "102", { avgKills: 4 }),   // Same name, different rarity
+      makeChampion("Vagabond", "Epic", "103", { avgKills: 5 }),
+      makeChampion("67", "Epic", "104", { avgKills: 4 }),
+      makeChampion("Smiley", "Epic", "105", { avgKills: 3 }),
+      makeChampion("Toast", "Rare", "106", { avgKills: 2 }),
+    ];
+    const rules: ContestRules = {
+      rarityRestriction: "OPEN", isOneOfEach: false, isStarCap: false,
+      maxEntriesPerUser: 1, format: "50/50",
+    };
+    const result = optimizeLineups({
+      ownedMokis: mokis, ownedSchemes: [], allSchemes: [],
+      contestRules: rules, numEntries: 1, entryFee: 0, dailyBudget: 5000,
+    });
+    expect(result.lineups).toHaveLength(1);
+    const names = result.lineups[0].champions.map(s => s.champion.name.toLowerCase());
+    // All 4 champion names must be unique
+    expect(new Set(names).size).toBe(4);
+    // Specifically, "dheu" should appear at most once
+    expect(names.filter(n => n === "dheu").length).toBe(1);
+  });
+
+  it("prevents duplicate champion names in One-Of-Each lineups", () => {
+    // Same champion name across different rarities — optimizer must pick unique names
+    const mokis: ChampionCard[] = [
+      makeChampion("Dheu", "Legendary", "200", { avgKills: 8 }),
+      makeChampion("Dheu", "Epic", "201", { avgKills: 6 }),
+      makeChampion("Dheu", "Rare", "202", { avgKills: 4 }),
+      makeChampion("Dheu", "Basic", "203", { avgKills: 2 }),
+      makeChampion("Vagabond", "Legendary", "207", { avgKills: 7 }),
+      makeChampion("Vagabond", "Epic", "204", { avgKills: 5 }),
+      makeChampion("Smiley", "Rare", "205", { avgKills: 3 }),
+      makeChampion("Toast", "Basic", "206", { avgKills: 1 }),
+    ];
+    const rules: ContestRules = {
+      rarityRestriction: "OPEN", isOneOfEach: true, isStarCap: false,
+      maxEntriesPerUser: 1, format: "50/50",
+    };
+    const result = optimizeLineups({
+      ownedMokis: mokis, ownedSchemes: [], allSchemes: [],
+      contestRules: rules, numEntries: 1, entryFee: 0, dailyBudget: 5000,
+    });
+    expect(result.lineups).toHaveLength(1);
+    const names = result.lineups[0].champions.map(s => s.champion.name.toLowerCase());
+    // All 4 champion names must be unique — Dheu should only appear once
+    expect(new Set(names).size).toBe(4);
+    expect(names.filter(n => n === "dheu").length).toBe(1);
+  });
+
+  it("allows same champion name in different entries (different physical cards)", () => {
+    // 8 unique champions but 2 copies of Dheu at different rarities
+    const mokis: ChampionCard[] = [
+      makeChampion("Dheu", "Legendary", "300", { avgKills: 8 }),
+      makeChampion("Dheu", "Epic", "301", { avgKills: 6 }),
+      makeChampion("Vagabond", "Legendary", "302", { avgKills: 7 }),
+      makeChampion("Smiley", "Legendary", "303", { avgKills: 6 }),
+      makeChampion("Toast", "Epic", "304", { avgKills: 5 }),
+      makeChampion("67", "Epic", "305", { avgKills: 4 }),
+      makeChampion("Gambit", "Rare", "306", { avgKills: 3 }),
+      makeChampion("Clutch", "Rare", "307", { avgKills: 2 }),
+      makeChampion("Bearish", "Basic", "308", { avgKills: 1 }),
+    ];
+    const rules: ContestRules = {
+      rarityRestriction: "OPEN", isOneOfEach: false, isStarCap: false,
+      maxEntriesPerUser: 2, format: "50/50",
+    };
+    const result = optimizeLineups({
+      ownedMokis: mokis, ownedSchemes: [], allSchemes: [],
+      contestRules: rules, numEntries: 2, entryFee: 0, dailyBudget: 5000,
+    });
+    expect(result.lineups).toHaveLength(2);
+    // Each individual lineup must have unique names
+    for (const lineup of result.lineups) {
+      const names = lineup.champions.map(s => s.champion.name.toLowerCase());
+      expect(new Set(names).size).toBe(4);
+    }
+  });
 });

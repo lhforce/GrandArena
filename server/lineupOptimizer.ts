@@ -232,13 +232,28 @@ function buildOneOfEachLineup(
     if (byRarity[r].length === 0) return null;
   }
 
-  // Score and pick the best from each rarity
+  // Process from highest rarity first so the best champions get name priority
+  const pickOrder = ["Legendary", "Epic", "Rare", "Basic"];
   const lineup: LineupSlot[] = [];
-  for (const r of rarities) {
+  const usedNames = new Set<string>();
+
+  for (const r of pickOrder) {
     const scored = byRarity[r]
       .map((c) => ({ champion: c, score: scoreChampion(c, scheme) }))
       .sort((a, b) => b.score - a.score);
-    lineup.push(scored[0]);
+    
+    // Find the best champion from this rarity that isn't a duplicate name
+    let picked = false;
+    for (const slot of scored) {
+      const champName = slot.champion.name.toLowerCase();
+      if (!usedNames.has(champName)) {
+        usedNames.add(champName);
+        lineup.push(slot);
+        picked = true;
+        break;
+      }
+    }
+    if (!picked) return null; // Can't fill this rarity without duplicating a name
   }
 
   return lineup;
@@ -259,9 +274,22 @@ function buildStandardLineup(
     .map((c) => ({ champion: c, score: scoreChampion(c, scheme) }))
     .sort((a, b) => b.score - a.score);
 
-  if (candidates.length < 4) return null;
+  // Greedy pick: take top-scored cards but enforce champion name uniqueness
+  // (no two cards with the same champion name, even at different rarities)
+  const lineup: LineupSlot[] = [];
+  const usedNames = new Set<string>();
 
-  return candidates.slice(0, 4);
+  for (const candidate of candidates) {
+    const champName = candidate.champion.name.toLowerCase();
+    if (usedNames.has(champName)) continue; // Skip duplicate champion
+    usedNames.add(champName);
+    lineup.push(candidate);
+    if (lineup.length === 4) break;
+  }
+
+  if (lineup.length < 4) return null;
+
+  return lineup;
 }
 
 // ─── Scheme Selection ──────────────────────────────────────────────
