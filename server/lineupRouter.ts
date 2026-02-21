@@ -14,6 +14,7 @@ import {
   savedLineups,
   gemSpendingLog,
   contests,
+  championStats,
 } from "../drizzle/schema";
 import { syncWalletInventory, getUserInventory, getAvailableCards } from "./walletSync";
 import {
@@ -110,16 +111,49 @@ export const lineupRouter = router({
       const spentToday = Number(spentResult?.total ?? 0);
       const remainingBudget = dailyBudget - spentToday;
 
-      // Load scheme data from game-data.json (served as static asset)
-      // For the optimizer, we need scheme metadata
+      // Load scheme data with image URLs from wallet sync
       const schemeCards: SchemeCardData[] = available.schemes.map((s) => ({
         tokenId: s.tokenId,
         name: s.name ?? "Unknown Scheme",
-        description: "", // We'll fill this from game data
+        description: "",
         hasTraitFilter: false,
         qualifyingChampionIds: [],
         category: "other" as const,
+        imageUrl: s.imageUrl ?? null,
       }));
+
+      // Load champion performance stats from database
+      let statsRows = await db.select().from(championStats);
+
+      // Auto-refresh stats if the table is empty (first-time use)
+      if (statsRows.length === 0) {
+        console.log("[Optimizer] No champion stats found, auto-refreshing...");
+        try {
+          const { rankAllChampions, parseGameDataChampions, saveChampionStats } = await import("./championStats");
+          const fs = await import("fs");
+          const path = await import("path");
+          const gameDataPath = path.resolve(import.meta.dirname ?? process.cwd(), "../client/public/game-data.json");
+          const raw = fs.readFileSync(gameDataPath, "utf-8");
+          const gameData = JSON.parse(raw);
+          const champions = parseGameDataChampions(gameData);
+          const rankings = rankAllChampions(champions);
+          await saveChampionStats(rankings, "season");
+          statsRows = await db.select().from(championStats);
+          console.log(`[Optimizer] Auto-refreshed ${statsRows.length} champion stats`);
+        } catch (err) {
+          console.error("[Optimizer] Failed to auto-refresh stats:", err);
+        }
+      }
+
+      const performanceStats = new Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number }>();
+      for (const row of statsRows) {
+        performanceStats.set(row.championTokenId, {
+          avgKills: Number(row.avgKills ?? 0),
+          avgBalls: Number(row.avgBalls ?? 0),
+          avgWartDistance: Number(row.avgWartDistance ?? 0),
+          winRate: Number(row.winRate ?? 0),
+        });
+      }
 
       const contestRules: ContestRules = {
         rarityRestriction: contest.rarityRestriction ?? "OPEN",
@@ -137,6 +171,7 @@ export const lineupRouter = router({
         numEntries: input.numEntries,
         entryFee: contest.entryFee ?? 0,
         dailyBudget: remainingBudget,
+        performanceStats: performanceStats.size > 0 ? performanceStats : undefined,
       });
 
       return {

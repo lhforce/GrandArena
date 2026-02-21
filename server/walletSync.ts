@@ -3,6 +3,7 @@
  * and syncs them to the user_cards table.
  * 
  * Uses the Ronin Marketplace GraphQL API to get owned NFTs.
+ * Now also fetches card images so each rarity variant shows correct artwork.
  */
 
 import { eq, and, sql } from "drizzle-orm";
@@ -16,6 +17,7 @@ const GA_CARDS_CONTRACT = "0x9e8ed4ff354bd11602255b3d8e1ed13a1bb26b4b";
 interface RoninNFT {
   tokenId: string;
   name: string;
+  image?: string;
   attributes: Record<string, string[]>;
 }
 
@@ -32,7 +34,10 @@ interface GraphQLResponse {
 async function gqlFetch(query: string): Promise<any> {
   const resp = await fetch(GRAPHQL_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "User-Agent": "Mozilla/5.0",
+    },
     body: JSON.stringify({ query }),
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -43,12 +48,13 @@ async function gqlFetch(query: string): Promise<any> {
 
 /**
  * Fetch all cards of a given type (MOKI or SCHEME) owned by a wallet.
+ * Now includes the image field for correct rarity-specific artwork.
  */
 async function fetchCardsByType(
   walletAddress: string,
   cardType: "MOKI" | "SCHEME"
-): Promise<Array<{ tokenId: string; name: string; rarity: string; championTokenId: string | null }>> {
-  const results: Array<{ tokenId: string; name: string; rarity: string; championTokenId: string | null }> = [];
+): Promise<Array<{ tokenId: string; name: string; rarity: string; championTokenId: string | null; imageUrl: string | null }>> {
+  const results: Array<{ tokenId: string; name: string; rarity: string; championTokenId: string | null; imageUrl: string | null }> = [];
   let from = 0;
   const size = 50;
 
@@ -65,6 +71,7 @@ async function fetchCardsByType(
         results {
           tokenId
           name
+          image
           attributes
         }
       }
@@ -82,6 +89,7 @@ async function fetchCardsByType(
         name: token.name ?? "Unknown",
         rarity,
         championTokenId,
+        imageUrl: token.image ?? null,
       });
     }
 
@@ -96,7 +104,7 @@ async function fetchCardsByType(
  * Count duplicates — group by championTokenId to find how many copies the user has.
  */
 function countDuplicates(
-  cards: Array<{ tokenId: string; name: string; rarity: string; championTokenId: string | null }>
+  cards: Array<{ tokenId: string; name: string; rarity: string; championTokenId: string | null; imageUrl: string | null }>
 ): Map<string, number> {
   const counts = new Map<string, number>();
   for (const card of cards) {
@@ -150,11 +158,12 @@ export async function syncWalletInventory(
       championTokenId: moki.championTokenId,
       name: moki.name,
       rarity: moki.rarity,
+      imageUrl: moki.imageUrl,
       quantity: 1, // Each NFT is unique, quantity tracked by championTokenId duplicates
       lastSyncedAt: new Date(),
     };
     await db.insert(userCards).values(values).onDuplicateKeyUpdate({
-      set: { lastSyncedAt: new Date(), rarity: moki.rarity, name: moki.name },
+      set: { lastSyncedAt: new Date(), rarity: moki.rarity, name: moki.name, imageUrl: moki.imageUrl },
     });
   }
 
@@ -168,11 +177,12 @@ export async function syncWalletInventory(
       championTokenId: null,
       name: scheme.name,
       rarity: scheme.rarity,
+      imageUrl: scheme.imageUrl,
       quantity: 1,
       lastSyncedAt: new Date(),
     };
     await db.insert(userCards).values(values).onDuplicateKeyUpdate({
-      set: { lastSyncedAt: new Date(), rarity: scheme.rarity, name: scheme.name },
+      set: { lastSyncedAt: new Date(), rarity: scheme.rarity, name: scheme.name, imageUrl: scheme.imageUrl },
     });
   }
 

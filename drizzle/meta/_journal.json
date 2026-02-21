@@ -15,6 +15,13 @@
       "when": 1771680089146,
       "tag": "0001_fluffy_star_brand",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1771709107424,
+      "tag": "0002_pink_shinobi_shaw",
+      "breakpoints": true
     }
   ]
 }

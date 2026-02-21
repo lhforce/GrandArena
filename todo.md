@@ -126,3 +126,7 @@
 
 ## Bug Fixes Round 6
 - [x] Fix "Send Contest Summary" button error on Telegram Alerts page (GA API now returns { contests: [...] } wrapper instead of flat array)
+
+## Bug Fixes Round 7
+- [x] Fix card image mismatch in Lineup Builder — images don't match champion names in built lineups
+- [x] Fix all projected scores showing same value (2172 pts) — optimizer not loading champion performance stats

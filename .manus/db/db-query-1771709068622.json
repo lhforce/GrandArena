@@ -1,0 +1,80 @@
+{
+  "query": "SELECT tokenId, championTokenId, name, rarity, cardType FROM user_cards WHERE cardType='MOKI' LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute SELECT tokenId, championTokenId, name, rarity, cardType FROM user_cards WHERE cardType='MOKI' LIMIT 10;",
+  "rows": [
+    {
+      "tokenId": "710177715",
+      "championTokenId": "4177",
+      "name": "Ronin Spirit",
+      "rarity": "Basic",
+      "cardType": "MOKI"
+    },
+    {
+      "tokenId": "1184831587",
+      "championTokenId": "4602",
+      "name": "Wizard Boi",
+      "rarity": "Basic",
+      "cardType": "MOKI"
+    },
+    {
+      "tokenId": "1288862087",
+      "championTokenId": "6100",
+      "name": "Sir Pochington",
+      "rarity": "Basic",
+      "cardType": "MOKI"
+    },
+    {
+      "tokenId": "4096255311",
+      "championTokenId": "7302",
+      "name": "MK Ultra 8888",
+      "rarity": "Legendary",
+      "cardType": "MOKI"
+    },
+    {
+      "tokenId": "4464511053",
+      "championTokenId": "6025",
+      "name": "Kuroshi",
+      "rarity": "Basic",
+      "cardType": "MOKI"
+    },
+    {
+      "tokenId": "6136674295",
+      "championTokenId": "3836",
+      "name": "Amber",
+      "rarity": "Rare",
+      "cardType": "MOKI"
+    },
+    {
+      "tokenId": "7780185944",
+      "championTokenId": "7858",
+      "name": "Maomao",
+      "rarity": "Rare",
+      "cardType": "MOKI"
+    },
+    {
+      "tokenId": "8427851408",
+      "championTokenId": "1133",
+      "name": "Bearish",
+      "rarity": "Rare",
+      "cardType": "MOKI"
+    },
+    {
+      "tokenId": "9484899914",
+      "championTokenId": "8260",
+      "name": "BIN Diesel",
+      "rarity": "Basic",
+      "cardType": "MOKI"
+    },
+    {
+      "tokenId": "9515662681",
+      "championTokenId": "1270",
+      "name": "Low Tier Phenom",
+      "rarity": "Epic",
+      "cardType": "MOKI"
+    }
+  ],
+  "messages": [],
+  "stdout": "tokenId\tchampionTokenId\tname\trarity\tcardType\n710177715\t4177\tRonin Spirit\tBasic\tMOKI\n1184831587\t4602\tWizard Boi\tBasic\tMOKI\n1288862087\t6100\tSir Pochington\tBasic\tMOKI\n4096255311\t7302\tMK Ultra 8888\tLegendary\tMOKI\n4464511053\t6025\tKuroshi\tBasic\tMOKI\n6136674295\t3836\tAmber\tRare\tMOKI\n7780185944\t7858\tMaomao\tRare\tMOKI\n8427851408\t1133\tBearish\tRare\tMOKI\n9484899914\t8260\tBIN Diesel\tBasic\tMOKI\n9515662681\t1270\tLow Tier Phenom\tEpic\tMOKI\n",
+  "stderr": "",
+  "execution_time_ms": 53
+}

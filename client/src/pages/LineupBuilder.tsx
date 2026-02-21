@@ -1,9 +1,9 @@
 /**
  * Lineup Builder — Interactive contest optimizer with card artwork display.
- * Mobile responsive.
+ * Mobile responsive. Uses actual card images from wallet sync (rarity-specific).
  */
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -21,24 +21,6 @@ import {
   Loader2, Swords, Trophy, Gem, AlertTriangle, ChevronRight,
   Crown, Sparkles, Zap, Lock, Save,
 } from "lucide-react";
-
-// ─── Types for game data ────────────────────────────────────────────
-interface GameChampion {
-  name: string;
-  image: string;
-  tokenId: string;
-  championTokenId: string;
-  attributes: { Rarity?: string[]; "Card Type"?: string[] };
-}
-interface GameScheme {
-  name: string;
-  image: string;
-  tokenId: string;
-}
-interface GameData {
-  champions: GameChampion[];
-  schemes: GameScheme[];
-}
 
 // ─── Constants ──────────────────────────────────────────────────────
 const RARITY_COLORS: Record<string, string> = {
@@ -62,62 +44,6 @@ export default function LineupBuilder() {
   const [selectedContestId, setSelectedContestId] = useState<number | null>(null);
   const [numEntries, setNumEntries] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>("LIVE");
-  const [gameData, setGameData] = useState<GameData | null>(null);
-
-  // Load game data for card images
-  useEffect(() => {
-    fetch("/game-data.json")
-      .then((r) => r.json())
-      .then((data: GameData) => setGameData(data))
-      .catch((err) => console.error("Failed to load game data:", err));
-  }, []);
-
-  // Build lookup maps for fast image resolution
-  const championImageMap = useMemo(() => {
-    if (!gameData) return new Map<string, { image: string; name: string }>();
-    const map = new Map<string, { image: string; name: string }>();
-    for (const c of gameData.champions) {
-      // Index by name (case-insensitive) and by tokenId and championTokenId
-      map.set(c.name.toLowerCase(), { image: c.image, name: c.name });
-      map.set(`token:${c.tokenId}`, { image: c.image, name: c.name });
-      map.set(`champion:${c.championTokenId}`, { image: c.image, name: c.name });
-    }
-    return map;
-  }, [gameData]);
-
-  const schemeImageMap = useMemo(() => {
-    if (!gameData) return new Map<string, { image: string; name: string }>();
-    const map = new Map<string, { image: string; name: string }>();
-    for (const s of gameData.schemes) {
-      map.set(s.name.toLowerCase(), { image: s.image, name: s.name });
-      map.set(`token:${s.tokenId}`, { image: s.image, name: s.name });
-    }
-    return map;
-  }, [gameData]);
-
-  const getChampionImage = (champion: { name: string; tokenId?: string; championTokenId?: string | null }) => {
-    const byName = championImageMap.get(champion.name.toLowerCase());
-    if (byName) return byName.image;
-    if (champion.tokenId) {
-      const byToken = championImageMap.get(`token:${champion.tokenId}`);
-      if (byToken) return byToken.image;
-    }
-    if (champion.championTokenId) {
-      const byChampion = championImageMap.get(`champion:${champion.championTokenId}`);
-      if (byChampion) return byChampion.image;
-    }
-    return null;
-  };
-
-  const getSchemeImage = (scheme: { name: string; tokenId?: string | null }) => {
-    const byName = schemeImageMap.get(scheme.name.toLowerCase());
-    if (byName) return byName.image;
-    if (scheme.tokenId) {
-      const byToken = schemeImageMap.get(`token:${scheme.tokenId}`);
-      if (byToken) return byToken.image;
-    }
-    return null;
-  };
 
   const contestsQuery = trpc.contests.list.useQuery({ status: statusFilter, limit: 50, offset: 0 });
   const budgetQuery = trpc.lineup.gemBudget.useQuery(undefined, { enabled: isAuthenticated });
@@ -250,7 +176,7 @@ export default function LineupBuilder() {
               <p className="text-xs mt-1">Scrape contests from Dashboard first.</p>
             </div>
           ) : (
-            <div className="space-y-2 max-h-[300px] sm:max-h-[400px] overflow-y-auto">
+            <div className="space-y-2 max-h-64 overflow-y-auto">
               {contestsQuery.data?.contests.map((contest) => (
                 <div key={contest.id} onClick={() => setSelectedContestId(contest.id)}
                   className={`p-2.5 sm:p-3 rounded-lg border cursor-pointer transition-all ${
@@ -366,9 +292,9 @@ export default function LineupBuilder() {
               </CardHeader>
               <CardContent className="px-3 sm:px-6">
                 <div className="grid grid-cols-5 gap-1.5 sm:gap-3">
-                  {/* Champion Cards with Artwork */}
+                  {/* Champion Cards with Artwork — uses imageUrl from optimizer (rarity-specific) */}
                   {lineup.champions.map((slot: any, ci: number) => {
-                    const imgUrl = getChampionImage(slot.champion);
+                    const imgUrl = slot.champion.imageUrl;
                     return (
                       <div key={ci} className={`rounded-lg border ${RARITY_BORDER[slot.champion.rarity] ?? "border-border"} bg-card/50 overflow-hidden text-center`}>
                         {/* Card Image */}
@@ -405,26 +331,19 @@ export default function LineupBuilder() {
                     );
                   })}
 
-                  {/* Scheme Card with Artwork */}
+                  {/* Scheme Card with Artwork — uses imageUrl from optimizer */}
                   <div className="rounded-lg border border-teal/30 bg-teal/5 overflow-hidden text-center">
                     <div className="aspect-[3/4] relative bg-background/30">
-                      {lineup.scheme ? (() => {
-                        const schemeImg = getSchemeImage(lineup.scheme);
-                        return schemeImg ? (
-                          <img
-                            src={schemeImg}
-                            alt={lineup.scheme.name}
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-teal" />
-                          </div>
-                        );
-                      })() : (
+                      {lineup.scheme?.imageUrl ? (
+                        <img
+                          src={lineup.scheme.imageUrl}
+                          alt={lineup.scheme.name}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                          <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-teal/40" />
+                          <Sparkles className={`w-6 h-6 sm:w-8 sm:h-8 ${lineup.scheme ? "text-teal" : "text-teal/40"}`} />
                         </div>
                       )}
                     </div>

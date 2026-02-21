@@ -1,0 +1,1 @@
+ALTER TABLE `user_cards` ADD `imageUrl` text;

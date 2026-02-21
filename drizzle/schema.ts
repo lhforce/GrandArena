@@ -140,6 +140,7 @@ export const userCards = mysqlTable("user_cards", {
   championTokenId: varchar("championTokenId", { length: 32 }),
   name: varchar("name", { length: 128 }),
   rarity: varchar("rarity", { length: 32 }),
+  imageUrl: text("imageUrl"),
   quantity: int("quantity").default(1),
   lastSyncedAt: timestamp("lastSyncedAt").defaultNow().notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

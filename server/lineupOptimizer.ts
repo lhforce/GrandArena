@@ -25,6 +25,7 @@ export interface ChampionCard {
   championTokenId: string | null;
   name: string;
   rarity: string;
+  imageUrl?: string | null;
   // Performance stats (optional, from champion_stats)
   avgKills?: number;
   avgBalls?: number;
@@ -40,6 +41,7 @@ export interface SchemeCardData {
   hasTraitFilter: boolean;
   qualifyingChampionIds: string[]; // championTokenIds that qualify
   category: SchemeCategory;
+  imageUrl?: string | null;
 }
 
 export type SchemeCategory =
@@ -437,5 +439,6 @@ export function userCardsToChampionCards(cards: UserCard[]): ChampionCard[] {
       championTokenId: c.championTokenId,
       name: c.name ?? "Unknown",
       rarity: c.rarity ?? "Basic",
+      imageUrl: c.imageUrl ?? null,
     }));
 }

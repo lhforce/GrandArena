@@ -354,3 +354,159 @@ describe("optimizeLineups", () => {
     expect(result.gemCost).toBe(0);
   });
 });
+
+// ─── Bug Fix Tests: Image URLs and Performance Stats ──────────────
+
+describe("imageUrl passthrough", () => {
+  it("preserves imageUrl on ChampionCard through optimizer", () => {
+    const mokis: ChampionCard[] = [
+      { tokenId: "1", championTokenId: "ct-1", name: "A", rarity: "Legendary", imageUrl: "https://example.com/a.webp", avgKills: 3, avgBalls: 1, avgWartDistance: 50, winRate: 0.5 },
+      { tokenId: "2", championTokenId: "ct-2", name: "B", rarity: "Legendary", imageUrl: "https://example.com/b.webp", avgKills: 2, avgBalls: 1, avgWartDistance: 50, winRate: 0.5 },
+      { tokenId: "3", championTokenId: "ct-3", name: "C", rarity: "Legendary", imageUrl: "https://example.com/c.webp", avgKills: 4, avgBalls: 1, avgWartDistance: 50, winRate: 0.5 },
+      { tokenId: "4", championTokenId: "ct-4", name: "D", rarity: "Legendary", imageUrl: "https://example.com/d.webp", avgKills: 1, avgBalls: 1, avgWartDistance: 50, winRate: 0.5 },
+    ];
+    const rules: ContestRules = {
+      rarityRestriction: "OPEN", isOneOfEach: false, isStarCap: false,
+      maxEntriesPerUser: 1, format: "50/50",
+    };
+    const result = optimizeLineups({
+      ownedMokis: mokis, ownedSchemes: [], allSchemes: [],
+      contestRules: rules, numEntries: 1, entryFee: 0, dailyBudget: 5000,
+    });
+
+    expect(result.lineups).toHaveLength(1);
+    for (const slot of result.lineups[0].champions) {
+      expect(slot.champion.imageUrl).toBeDefined();
+      expect(slot.champion.imageUrl).toMatch(/^https:\/\/example\.com\//);
+    }
+  });
+
+  it("handles null imageUrl gracefully", () => {
+    const mokis: ChampionCard[] = [
+      { tokenId: "1", championTokenId: "ct-1", name: "A", rarity: "Basic", imageUrl: null, avgKills: 3, avgBalls: 1, avgWartDistance: 50, winRate: 0.5 },
+      { tokenId: "2", championTokenId: "ct-2", name: "B", rarity: "Basic", imageUrl: undefined, avgKills: 2, avgBalls: 1, avgWartDistance: 50, winRate: 0.5 },
+      { tokenId: "3", championTokenId: "ct-3", name: "C", rarity: "Basic", avgKills: 4, avgBalls: 1, avgWartDistance: 50, winRate: 0.5 },
+      { tokenId: "4", championTokenId: "ct-4", name: "D", rarity: "Basic", avgKills: 1, avgBalls: 1, avgWartDistance: 50, winRate: 0.5 },
+    ];
+    const rules: ContestRules = {
+      rarityRestriction: "OPEN", isOneOfEach: false, isStarCap: false,
+      maxEntriesPerUser: 1, format: "50/50",
+    };
+    const result = optimizeLineups({
+      ownedMokis: mokis, ownedSchemes: [], allSchemes: [],
+      contestRules: rules, numEntries: 1, entryFee: 0, dailyBudget: 5000,
+    });
+
+    expect(result.lineups).toHaveLength(1);
+    // Should not throw even with null/undefined imageUrl
+    expect(result.lineups[0].champions).toHaveLength(4);
+  });
+});
+
+describe("performance stats differentiation", () => {
+  it("produces different scores when champions have different stats", () => {
+    const mokis: ChampionCard[] = [
+      { tokenId: "1", championTokenId: "ct-1", name: "TopKiller", rarity: "Basic", avgKills: 5, avgBalls: 2, avgWartDistance: 80, winRate: 0.7 },
+      { tokenId: "2", championTokenId: "ct-2", name: "Average", rarity: "Basic", avgKills: 2, avgBalls: 1, avgWartDistance: 50, winRate: 0.3 },
+      { tokenId: "3", championTokenId: "ct-3", name: "BallHog", rarity: "Basic", avgKills: 1, avgBalls: 4, avgWartDistance: 30, winRate: 0.4 },
+      { tokenId: "4", championTokenId: "ct-4", name: "WartRunner", rarity: "Basic", avgKills: 0.5, avgBalls: 0.5, avgWartDistance: 120, winRate: 0.5 },
+    ];
+    const rules: ContestRules = {
+      rarityRestriction: "OPEN", isOneOfEach: false, isStarCap: false,
+      maxEntriesPerUser: 1, format: "50/50",
+    };
+    const result = optimizeLineups({
+      ownedMokis: mokis, ownedSchemes: [], allSchemes: [],
+      contestRules: rules, numEntries: 1, entryFee: 0, dailyBudget: 5000,
+    });
+
+    expect(result.lineups).toHaveLength(1);
+    const scores = result.lineups[0].champions.map((s) => s.score);
+    // Scores should NOT all be the same
+    const uniqueScores = new Set(scores);
+    expect(uniqueScores.size).toBeGreaterThan(1);
+  });
+
+  it("enriches champions with performanceStats from map", () => {
+    const mokis: ChampionCard[] = [
+      { tokenId: "1", championTokenId: "ct-1", name: "A", rarity: "Basic" },
+      { tokenId: "2", championTokenId: "ct-2", name: "B", rarity: "Basic" },
+      { tokenId: "3", championTokenId: "ct-3", name: "C", rarity: "Basic" },
+      { tokenId: "4", championTokenId: "ct-4", name: "D", rarity: "Basic" },
+    ];
+    const performanceStats = new Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number }>();
+    performanceStats.set("ct-1", { avgKills: 5, avgBalls: 2, avgWartDistance: 80, winRate: 0.7 });
+    performanceStats.set("ct-2", { avgKills: 1, avgBalls: 0.5, avgWartDistance: 20, winRate: 0.2 });
+    performanceStats.set("ct-3", { avgKills: 3, avgBalls: 1.5, avgWartDistance: 60, winRate: 0.5 });
+    performanceStats.set("ct-4", { avgKills: 0.5, avgBalls: 3, avgWartDistance: 40, winRate: 0.4 });
+
+    const rules: ContestRules = {
+      rarityRestriction: "OPEN", isOneOfEach: false, isStarCap: false,
+      maxEntriesPerUser: 1, format: "50/50",
+    };
+    const result = optimizeLineups({
+      ownedMokis: mokis, ownedSchemes: [], allSchemes: [],
+      contestRules: rules, numEntries: 1, entryFee: 0, dailyBudget: 5000,
+      performanceStats,
+    });
+
+    expect(result.lineups).toHaveLength(1);
+    const scores = result.lineups[0].champions.map((s) => s.score);
+    const uniqueScores = new Set(scores);
+    // With different performance stats, scores should be different
+    expect(uniqueScores.size).toBeGreaterThan(1);
+
+    // The first champion (highest score) should be the one with best stats (ct-1)
+    expect(result.lineups[0].champions[0].champion.name).toBe("A");
+  });
+
+  it("falls back to defaults when no performanceStats provided", () => {
+    // All champions with no stats should get the same default score per rarity
+    const mokis: ChampionCard[] = [
+      { tokenId: "1", championTokenId: "ct-1", name: "A", rarity: "Basic" },
+      { tokenId: "2", championTokenId: "ct-2", name: "B", rarity: "Basic" },
+      { tokenId: "3", championTokenId: "ct-3", name: "C", rarity: "Basic" },
+      { tokenId: "4", championTokenId: "ct-4", name: "D", rarity: "Basic" },
+    ];
+    const rules: ContestRules = {
+      rarityRestriction: "OPEN", isOneOfEach: false, isStarCap: false,
+      maxEntriesPerUser: 1, format: "50/50",
+    };
+    const result = optimizeLineups({
+      ownedMokis: mokis, ownedSchemes: [], allSchemes: [],
+      contestRules: rules, numEntries: 1, entryFee: 0, dailyBudget: 5000,
+      // No performanceStats
+    });
+
+    expect(result.lineups).toHaveLength(1);
+    const scores = result.lineups[0].champions.map((s) => s.score);
+    // Without stats, all Basic champions get the same default score
+    expect(new Set(scores).size).toBe(1);
+  });
+
+  it("scheme imageUrl is preserved in optimizer output", () => {
+    const mokis: ChampionCard[] = [
+      { tokenId: "1", championTokenId: "ct-1", name: "A", rarity: "Basic", avgKills: 3, avgBalls: 1, avgWartDistance: 50, winRate: 0.5 },
+      { tokenId: "2", championTokenId: "ct-2", name: "B", rarity: "Basic", avgKills: 2, avgBalls: 1, avgWartDistance: 50, winRate: 0.5 },
+      { tokenId: "3", championTokenId: "ct-3", name: "C", rarity: "Basic", avgKills: 4, avgBalls: 1, avgWartDistance: 50, winRate: 0.5 },
+      { tokenId: "4", championTokenId: "ct-4", name: "D", rarity: "Basic", avgKills: 1, avgBalls: 1, avgWartDistance: 50, winRate: 0.5 },
+    ];
+    const schemes: SchemeCardData[] = [{
+      tokenId: "scheme-1", name: "Test Scheme", description: "",
+      hasTraitFilter: false, qualifyingChampionIds: [],
+      category: "other", imageUrl: "https://example.com/scheme.webp",
+    }];
+    const rules: ContestRules = {
+      rarityRestriction: "OPEN", isOneOfEach: false, isStarCap: false,
+      maxEntriesPerUser: 1, format: "50/50",
+    };
+    const result = optimizeLineups({
+      ownedMokis: mokis, ownedSchemes: schemes, allSchemes: schemes,
+      contestRules: rules, numEntries: 1, entryFee: 0, dailyBudget: 5000,
+    });
+
+    expect(result.lineups).toHaveLength(1);
+    expect(result.lineups[0].scheme).not.toBeNull();
+    expect(result.lineups[0].scheme?.imageUrl).toBe("https://example.com/scheme.webp");
+  });
+});
