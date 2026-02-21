@@ -1,0 +1,28 @@
+{
+  "query": "SELECT tokenId, name, rarity, imageUrl FROM user_cards WHERE cardType='MOKI' LIMIT 3;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute SELECT tokenId, name, rarity, imageUrl FROM user_cards WHERE cardType='MOKI' LIMIT 3;",
+  "rows": [
+    {
+      "tokenId": "710177715",
+      "name": "Ronin Spirit",
+      "rarity": "Basic",
+      "imageUrl": "https://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/76ecb126493a94c2_full.webp"
+    },
+    {
+      "tokenId": "1184831587",
+      "name": "Wizard Boi",
+      "rarity": "Basic",
+      "imageUrl": "https://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/a96ee206162acea4_full.webp"
+    },
+    {
+      "tokenId": "1288862087",
+      "name": "Sir Pochington",
+      "rarity": "Basic",
+      "imageUrl": "https://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/d920dc5c83c45478_full.webp"
+    }
+  ],
+  "messages": [],
+  "stdout": "tokenId\tname\trarity\timageUrl\n710177715\tRonin Spirit\tBasic\thttps://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/76ecb126493a94c2_full.webp\n1184831587\tWizard Boi\tBasic\thttps://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/a96ee206162acea4_full.webp\n1288862087\tSir Pochington\tBasic\thttps://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/d920dc5c83c45478_full.webp\n",
+  "stderr": "",
+  "execution_time_ms": 53
+}

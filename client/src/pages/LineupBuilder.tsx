@@ -50,9 +50,7 @@ export default function LineupBuilder() {
     preselectedContestId ? Number(preselectedContestId) : null
   );
   const [numEntries, setNumEntries] = useState(1);
-  const [statusFilter, setStatusFilter] = useState<string>(
-    preselectedContestId ? "OPEN" : "LIVE"
-  );
+  const [statusFilter, setStatusFilter] = useState<string>("OPEN");
 
   const contestsQuery = trpc.contests.list.useQuery({ status: statusFilter, limit: 50, offset: 0 });
   const budgetQuery = trpc.lineup.gemBudget.useQuery(undefined, { enabled: isAuthenticated });
@@ -176,7 +174,7 @@ export default function LineupBuilder() {
         </CardHeader>
         <CardContent className="space-y-3 sm:space-y-4">
           <div className="flex items-center gap-2">
-            {["LIVE", "OPEN", "DRAFT"].map((status) => (
+            {["OPEN", "LIVE", "DRAFT"].map((status) => (
               <Button key={status} variant={statusFilter === status ? "default" : "outline"} size="sm"
                 onClick={() => { setStatusFilter(status); setSelectedContestId(null); }}
                 className={`h-9 text-xs sm:text-sm ${statusFilter === status ? "bg-gold text-background" : ""}`}>

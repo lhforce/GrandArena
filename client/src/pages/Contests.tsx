@@ -198,14 +198,14 @@ export default function Contests() {
       }
     }
 
-    // Sort available: favorites first, then LIVE, then OPEN, then by spots remaining
+    // Sort available: favorites first, then OPEN, then LIVE, then by spots remaining
     avail.sort((a, b) => {
       // Favorites always first
       const aFav = favSet.has(a.id) ? 0 : 1;
       const bFav = favSet.has(b.id) ? 0 : 1;
       if (aFav !== bFav) return aFav - bFav;
 
-      const statusOrder: Record<string, number> = { LIVE: 0, OPEN: 1, DRAFT: 2 };
+      const statusOrder: Record<string, number> = { OPEN: 0, LIVE: 1, DRAFT: 2 };
       const sa = statusOrder[a.contestStatus] ?? 3;
       const sb = statusOrder[b.contestStatus] ?? 3;
       if (sa !== sb) return sa - sb;

@@ -146,3 +146,8 @@
 - [x] "Has open slots" toggle — quick filter to hide DRAFT/COMPLETED and show only joinable contests
 - [x] Countdown timer — show time remaining until contest start for OPEN/DRAFT contests
 - [x] Favorite contests — pin specific contests to the top with database persistence
+
+## My Cards Page Redesign
+- [x] Group cards by rarity (Legendary, Epic, Rare, Basic/Common)
+- [x] Display card images on each card
+- [x] Change contest sorting: OPEN contests always at top of lists, above LIVE

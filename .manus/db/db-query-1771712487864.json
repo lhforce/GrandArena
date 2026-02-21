@@ -1,0 +1,70 @@
+{
+  "query": "SELECT tokenId, name, rarity, imageUrl FROM user_cards LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute SELECT tokenId, name, rarity, imageUrl FROM user_cards LIMIT 10;",
+  "rows": [
+    {
+      "tokenId": "710177715",
+      "name": "Ronin Spirit",
+      "rarity": "Basic",
+      "imageUrl": "https://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/76ecb126493a94c2_full.webp"
+    },
+    {
+      "tokenId": "1184831587",
+      "name": "Wizard Boi",
+      "rarity": "Basic",
+      "imageUrl": "https://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/a96ee206162acea4_full.webp"
+    },
+    {
+      "tokenId": "1288862087",
+      "name": "Sir Pochington",
+      "rarity": "Basic",
+      "imageUrl": "https://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/d920dc5c83c45478_full.webp"
+    },
+    {
+      "tokenId": "4096255311",
+      "name": "MK Ultra 8888",
+      "rarity": "Legendary",
+      "imageUrl": "https://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/6e2bcfdfd191addf_full.webp"
+    },
+    {
+      "tokenId": "4464511053",
+      "name": "Kuroshi",
+      "rarity": "Basic",
+      "imageUrl": "https://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/59017709a7811d55_full.webp"
+    },
+    {
+      "tokenId": "6136674295",
+      "name": "Amber",
+      "rarity": "Rare",
+      "imageUrl": "https://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/19a0cf888e1c23eb_full.webp"
+    },
+    {
+      "tokenId": "7780185944",
+      "name": "Maomao",
+      "rarity": "Rare",
+      "imageUrl": "https://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/e6798c56a75db0d5_full.webp"
+    },
+    {
+      "tokenId": "8427851408",
+      "name": "Bearish",
+      "rarity": "Rare",
+      "imageUrl": "https://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/9aa747b18f8c200c_full.webp"
+    },
+    {
+      "tokenId": "9484899914",
+      "name": "BIN Diesel",
+      "rarity": "Basic",
+      "imageUrl": "https://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/72e0220f4c5fe070_full.webp"
+    },
+    {
+      "tokenId": "9515662681",
+      "name": "Low Tier Phenom",
+      "rarity": "Epic",
+      "imageUrl": "https://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/54911c003cbaca8b_full.webp"
+    }
+  ],
+  "messages": [],
+  "stdout": "tokenId\tname\trarity\timageUrl\n710177715\tRonin Spirit\tBasic\thttps://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/76ecb126493a94c2_full.webp\n1184831587\tWizard Boi\tBasic\thttps://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/a96ee206162acea4_full.webp\n1288862087\tSir Pochington\tBasic\thttps://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/d920dc5c83c45478_full.webp\n4096255311\tMK Ultra 8888\tLegendary\thttps://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/6e2bcfdfd191addf_full.webp\n4464511053\tKuroshi\tBasic\thttps://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/59017709a7811d55_full.webp\n6136674295\tAmber\tRare\thttps://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/19a0cf888e1c23eb_full.webp\n7780185944\tMaomao\tRare\thttps://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/e6798c56a75db0d5_full.webp\n8427851408\tBearish\tRare\thttps://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/9aa747b18f8c200c_full.webp\n9484899914\tBIN Diesel\tBasic\thttps://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/72e0220f4c5fe070_full.webp\n9515662681\tLow Tier Phenom\tEpic\thttps://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/54911c003cbaca8b_full.webp\n",
+  "stderr": "",
+  "execution_time_ms": 53
+}

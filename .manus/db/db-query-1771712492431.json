@@ -1,0 +1,40 @@
+{
+  "query": "SELECT tokenId, name, rarity, LEFT(imageUrl, 80) as img FROM user_cards WHERE cardType='MOKI' LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute SELECT tokenId, name, rarity, LEFT(imageUrl, 80) as img FROM user_cards WHERE cardType='MOKI' LIMIT 5;",
+  "rows": [
+    {
+      "tokenId": "710177715",
+      "name": "Ronin Spirit",
+      "rarity": "Basic",
+      "img": "https://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/76ecb1264"
+    },
+    {
+      "tokenId": "1184831587",
+      "name": "Wizard Boi",
+      "rarity": "Basic",
+      "img": "https://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/a96ee2061"
+    },
+    {
+      "tokenId": "1288862087",
+      "name": "Sir Pochington",
+      "rarity": "Basic",
+      "img": "https://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/d920dc5c8"
+    },
+    {
+      "tokenId": "4096255311",
+      "name": "MK Ultra 8888",
+      "rarity": "Legendary",
+      "img": "https://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/6e2bcfdfd"
+    },
+    {
+      "tokenId": "4464511053",
+      "name": "Kuroshi",
+      "rarity": "Basic",
+      "img": "https://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/59017709a"
+    }
+  ],
+  "messages": [],
+  "stdout": "tokenId\tname\trarity\timg\n710177715\tRonin Spirit\tBasic\thttps://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/76ecb1264\n1184831587\tWizard Boi\tBasic\thttps://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/a96ee2061\n1288862087\tSir Pochington\tBasic\thttps://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/d920dc5c8\n4096255311\tMK Ultra 8888\tLegendary\thttps://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/6e2bcfdfd\n4464511053\tKuroshi\tBasic\thttps://fhs9t4t52f1kkfmo.public.blob.vercel-storage.com/season1-launch/59017709a\n",
+  "stderr": "",
+  "execution_time_ms": 53
+}
