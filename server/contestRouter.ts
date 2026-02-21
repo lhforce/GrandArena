@@ -4,9 +4,9 @@
 
 import { z } from "zod";
 import { eq, desc, asc, and, sql, inArray, isNotNull, like } from "drizzle-orm";
-import { publicProcedure, router } from "./_core/trpc";
+import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
-import { contests, leaderboardEntries, scrapeJobs, savedLineups } from "../drizzle/schema";
+import { contests, leaderboardEntries, scrapeJobs, savedLineups, favoriteContests } from "../drizzle/schema";
 import { runContestScrape, refreshActiveContests } from "./contestScraper";
 import { processUnidentifiedEntries, runIdentificationPipeline } from "./cardIdentifier";
 
@@ -242,4 +242,54 @@ export const contestRouter = router({
       .from(contests)
       .groupBy(contests.rarityRestriction);
   }),
+
+  /**
+   * Get user's favorite contest IDs.
+   */
+  getFavorites: protectedProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) return [];
+
+    const favs = await db.select({ contestId: favoriteContests.contestId })
+      .from(favoriteContests)
+      .where(eq(favoriteContests.userId, ctx.user.id));
+
+    return favs.map(f => f.contestId);
+  }),
+
+  /**
+   * Toggle a contest as favorite (add or remove).
+   */
+  toggleFavorite: protectedProcedure
+    .input(z.object({ contestId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+
+      // Check if already favorited
+      const existing = await db.select()
+        .from(favoriteContests)
+        .where(and(
+          eq(favoriteContests.userId, ctx.user.id),
+          eq(favoriteContests.contestId, input.contestId),
+        ))
+        .limit(1);
+
+      if (existing.length > 0) {
+        // Remove favorite
+        await db.delete(favoriteContests)
+          .where(and(
+            eq(favoriteContests.userId, ctx.user.id),
+            eq(favoriteContests.contestId, input.contestId),
+          ));
+        return { favorited: false };
+      } else {
+        // Add favorite
+        await db.insert(favoriteContests).values({
+          userId: ctx.user.id,
+          contestId: input.contestId,
+        });
+        return { favorited: true };
+      }
+    }),
 });

@@ -165,3 +165,55 @@ describe("contests.getWithLeaderboard", () => {
     expect(result).toBeNull();
   });
 });
+
+describe("contests.getFavorites", () => {
+  it("returns an array of favorite contest IDs for authenticated user", async () => {
+    const ctx = createMockContext();
+    const caller = appRouter.createCaller(ctx);
+
+    const result = await caller.contests.getFavorites();
+
+    expect(Array.isArray(result)).toBe(true);
+    for (const id of result) {
+      expect(typeof id).toBe("number");
+    }
+  });
+});
+
+describe("contests.toggleFavorite", () => {
+  it("adds a contest to favorites and returns favorited: true", async () => {
+    const ctx = createMockContext();
+    const caller = appRouter.createCaller(ctx);
+
+    // First, get current favorites to find a contest ID to use
+    const contestList = await caller.contests.list({ limit: 1, offset: 0 });
+    if (contestList.contests.length === 0) {
+      // No contests in DB, skip
+      return;
+    }
+
+    const contestId = contestList.contests[0]!.id;
+
+    // Ensure it's not already favorited — toggle off first if needed
+    const currentFavs = await caller.contests.getFavorites();
+    if (currentFavs.includes(contestId)) {
+      await caller.contests.toggleFavorite({ contestId });
+    }
+
+    // Now toggle on
+    const result = await caller.contests.toggleFavorite({ contestId });
+    expect(result.favorited).toBe(true);
+
+    // Verify it's in the list
+    const favs = await caller.contests.getFavorites();
+    expect(favs).toContain(contestId);
+
+    // Toggle off (cleanup)
+    const result2 = await caller.contests.toggleFavorite({ contestId });
+    expect(result2.favorited).toBe(false);
+
+    // Verify it's removed
+    const favs2 = await caller.contests.getFavorites();
+    expect(favs2).not.toContain(contestId);
+  });
+});

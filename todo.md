@@ -141,3 +141,8 @@
 - [x] Sort open contests: available entry slots first, then full contests
 - [x] Add FULL accordion — collapsible red "FULL" section grouping full contests
 - [x] Click-to-build — clicking an open contest with available entries navigates to Lineup Builder with that contest pre-selected
+
+## Contests Page Features Round 2
+- [x] "Has open slots" toggle — quick filter to hide DRAFT/COMPLETED and show only joinable contests
+- [x] Countdown timer — show time remaining until contest start for OPEN/DRAFT contests
+- [x] Favorite contests — pin specific contests to the top with database persistence

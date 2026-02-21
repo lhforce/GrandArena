@@ -231,3 +231,17 @@ export const scrapeJobs = mysqlTable("scrape_jobs", {
 
 export type ScrapeJob = typeof scrapeJobs.$inferSelect;
 export type InsertScrapeJob = typeof scrapeJobs.$inferInsert;
+
+// ─── Favorite Contests (user-pinned contests) ──────────────────────
+export const favoriteContests = mysqlTable("favorite_contests", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  contestId: int("contestId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("idx_fav_user_contest").on(table.userId, table.contestId),
+  index("idx_fav_user").on(table.userId),
+]);
+
+export type FavoriteContest = typeof favoriteContests.$inferSelect;
+export type InsertFavoriteContest = typeof favoriteContests.$inferInsert;
