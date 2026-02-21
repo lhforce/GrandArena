@@ -1,5 +1,6 @@
 /**
  * Dashboard — Main overview page showing contest stats, scrape status, and quick actions.
+ * Uses non-blocking scrape with auto-polling for real-time progress.
  */
 
 import { trpc } from "@/lib/trpc";
@@ -19,43 +20,78 @@ import {
   XCircle,
   AlertCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 export default function Dashboard() {
-  const stats = trpc.contests.stats.useQuery();
-  const jobs = trpc.contests.scrapeJobs.useQuery({ limit: 5 });
-  const utils = trpc.useUtils();
-
   const [scraping, setScraping] = useState(false);
   const [identifying, setIdentifying] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stats = trpc.contests.stats.useQuery(undefined, {
+    refetchInterval: scraping || identifying ? 3000 : false, // Auto-poll while running
+  });
+  const jobs = trpc.contests.scrapeJobs.useQuery({ limit: 5 }, {
+    refetchInterval: scraping || identifying ? 3000 : false,
+  });
+  const utils = trpc.useUtils();
+
+  // Watch for job completion via polling
+  useEffect(() => {
+    if (!scraping && !identifying) return;
+
+    const latestJob = jobs.data?.[0];
+    if (!latestJob) return;
+
+    if (latestJob.status === "completed" || latestJob.status === "failed") {
+      if (scraping) {
+        if (latestJob.status === "completed") {
+          toast.success("Scrape Complete!", {
+            description: `${latestJob.contestsProcessed ?? 0} contests, ${latestJob.entriesProcessed ?? 0} entries processed.`,
+          });
+        } else {
+          toast.error("Scrape Failed", {
+            description: latestJob.errorMessage ?? "Unknown error",
+          });
+        }
+        setScraping(false);
+      }
+      if (identifying) {
+        if (latestJob.status === "completed") {
+          toast.success("AI Identification Complete!", {
+            description: `${latestJob.aiProcessed ?? 0} entries identified.`,
+          });
+        } else {
+          toast.error("Identification Failed", {
+            description: latestJob.errorMessage ?? "Unknown error",
+          });
+        }
+        setIdentifying(false);
+      }
+    }
+  }, [jobs.data, scraping, identifying]);
 
   const triggerScrape = trpc.contests.triggerScrape.useMutation({
-    onSuccess: (result) => {
-      toast.success("Scrape Complete", {
-        description: `Processed ${result.contestsProcessed} contests, ${result.entriesProcessed} leaderboard entries. ${result.errors.length > 0 ? `${result.errors.length} errors.` : ""}`,
+    onSuccess: () => {
+      toast.info("Scrape Started", {
+        description: "Fetching contests and leaderboards in the background. Stats will update automatically.",
       });
-      utils.contests.stats.invalidate();
-      utils.contests.scrapeJobs.invalidate();
-      setScraping(false);
+      // Keep scraping state — will be cleared by polling
     },
     onError: (err) => {
-      toast.error("Scrape Failed", { description: err.message });
+      toast.error("Failed to Start Scrape", { description: err.message });
       setScraping(false);
     },
   });
 
   const triggerIdentification = trpc.contests.triggerIdentification.useMutation({
-    onSuccess: (result) => {
-      toast.success("AI Identification Complete", {
-        description: `Processed ${result.processed} entries. ${result.errors} errors.`,
+    onSuccess: () => {
+      toast.info("AI Identification Started", {
+        description: "Analyzing card thumbnails in the background. Stats will update automatically.",
       });
-      utils.contests.stats.invalidate();
-      utils.contests.scrapeJobs.invalidate();
-      setIdentifying(false);
     },
     onError: (err) => {
-      toast.error("Identification Failed", { description: err.message });
+      toast.error("Failed to Start Identification", { description: err.message });
       setIdentifying(false);
     },
   });
@@ -72,6 +108,10 @@ export default function Dashboard() {
 
   const s = stats.data;
 
+  // Determine if a job is currently running from the latest job status
+  const latestJob = jobs.data?.[0];
+  const jobRunning = latestJob?.status === "running";
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -85,19 +125,19 @@ export default function Dashboard() {
         <div className="flex gap-2">
           <Button
             onClick={handleScrape}
-            disabled={scraping}
+            disabled={scraping || jobRunning}
             className="bg-teal hover:bg-teal/90 text-background"
           >
-            {scraping ? (
+            {scraping || jobRunning ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : (
               <RefreshCw className="w-4 h-4 mr-2" />
             )}
-            {scraping ? "Scraping..." : "Scrape Contests"}
+            {scraping || jobRunning ? "Scraping..." : "Scrape Contests"}
           </Button>
           <Button
             onClick={handleIdentify}
-            disabled={identifying}
+            disabled={identifying || jobRunning}
             variant="outline"
             className="border-gold/30 text-gold hover:bg-gold/10"
           >
@@ -110,6 +150,32 @@ export default function Dashboard() {
           </Button>
         </div>
       </div>
+
+      {/* Progress Banner */}
+      {(scraping || identifying || jobRunning) && (
+        <Card className="glass-card border-teal/30 bg-teal/5">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <Loader2 className="w-5 h-5 text-teal animate-spin flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-teal">
+                  {scraping || (jobRunning && latestJob?.jobType === "contests")
+                    ? "Scraping contests and leaderboards..."
+                    : "Running AI identification..."}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Stats update automatically every 3 seconds. This may take 1-3 minutes.
+                  {s && (
+                    <span className="ml-2 text-teal">
+                      {s.totalContests} contests · {s.totalLeaderboardEntries.toLocaleString()} entries so far
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats Grid */}
       {stats.isLoading ? (
@@ -203,6 +269,11 @@ export default function Dashboard() {
                         {job.startedAt
                           ? new Date(job.startedAt).toLocaleString()
                           : "Pending"}
+                        {job.completedAt && job.startedAt && (
+                          <span className="ml-2 text-teal">
+                            ({Math.round((new Date(job.completedAt).getTime() - new Date(job.startedAt).getTime()) / 1000)}s)
+                          </span>
+                        )}
                       </p>
                     </div>
                   </div>
@@ -224,11 +295,19 @@ export default function Dashboard() {
                           ? "default"
                           : job.status === "failed"
                             ? "destructive"
-                            : "secondary"
+                            : job.status === "running"
+                              ? "secondary"
+                              : "secondary"
                       }
-                      className={job.status === "completed" ? "bg-green-600/20 text-green-300" : ""}
+                      className={
+                        job.status === "completed"
+                          ? "bg-green-600/20 text-green-300"
+                          : job.status === "running"
+                            ? "bg-teal/20 text-teal animate-pulse"
+                            : ""
+                      }
                     >
-                      {job.status}
+                      {job.status === "running" ? "⚡ Running" : job.status}
                     </Badge>
                   </div>
                 </div>

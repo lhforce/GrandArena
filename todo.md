@@ -105,3 +105,6 @@
 - [ ] Shared winning lineup database serving multiple users
 - [ ] Subscription tier preparation (USDC on Ronin chain)
 - [ ] Role-based access control for future tiers
+
+## Bug Fixes Round 4
+- [x] Fix "Scrape Contests" button spinning indefinitely with no results (made non-blocking with auto-polling progress)

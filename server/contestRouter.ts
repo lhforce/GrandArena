@@ -170,12 +170,19 @@ export const contestRouter = router({
 
   /**
    * Trigger a full contest scrape (admin action).
+   * Non-blocking: starts the scrape in background and returns the job ID immediately.
    */
   triggerScrape: publicProcedure.mutation(async () => {
-    console.log("[ContestRouter] Starting full contest scrape...");
-    const result = await runContestScrape();
-    console.log(`[ContestRouter] Scrape complete: ${result.contestsProcessed} contests, ${result.entriesProcessed} entries`);
-    return result;
+    console.log("[ContestRouter] Starting full contest scrape (non-blocking)...");
+    // Start scrape in background — don't await
+    const scrapePromise = runContestScrape();
+    scrapePromise.then((result) => {
+      console.log(`[ContestRouter] Scrape complete: ${result.contestsProcessed} contests, ${result.entriesProcessed} entries`);
+    }).catch((err) => {
+      console.error(`[ContestRouter] Scrape failed:`, err);
+    });
+    // Return immediately so the UI doesn't hang
+    return { started: true, message: "Scrape started in background. Refresh stats to see progress." };
   }),
 
   /**
@@ -188,6 +195,7 @@ export const contestRouter = router({
 
   /**
    * Trigger AI identification of card images.
+   * Non-blocking: starts in background and returns immediately.
    */
   triggerIdentification: publicProcedure
     .input(z.object({
@@ -195,10 +203,14 @@ export const contestRouter = router({
     }))
     .mutation(async ({ input }) => {
       const topN = input.topN;
-      console.log(`[ContestRouter] Starting AI identification (top ${topN} per contest)...`);
-      const result = await runIdentificationPipeline(topN);
-      console.log(`[ContestRouter] Identification complete: ${result.processed} processed, ${result.errors} errors`);
-      return result;
+      console.log(`[ContestRouter] Starting AI identification (top ${topN} per contest) (non-blocking)...`);
+      const idPromise = runIdentificationPipeline(topN);
+      idPromise.then((result) => {
+        console.log(`[ContestRouter] Identification complete: ${result.processed} processed, ${result.errors} errors`);
+      }).catch((err) => {
+        console.error(`[ContestRouter] Identification failed:`, err);
+      });
+      return { started: true, message: "AI identification started in background. Refresh stats to see progress." };
     }),
 
   /**
