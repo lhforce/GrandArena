@@ -36,3 +36,6 @@
 ## Tests
 - [x] Auth logout test (1 test)
 - [x] Ronin proxy tests (9 tests)
+
+## Bug Fixes
+- [x] Fix Whale Watching scheme card showing only 1 champion instead of all qualifying ones (confirmed working - 27 champions display correctly)
