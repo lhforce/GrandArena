@@ -1,0 +1,15 @@
+{
+  "query": "SELECT \n  COUNT(*) as total_entries,\n  SUM(CASE WHEN `identifiedChampions` IS NOT NULL THEN 1 ELSE 0 END) as identified_entries,\n  SUM(CASE WHEN CAST(`aiConfidence` AS DECIMAL(5,2)) >= 0.70 THEN 1 ELSE 0 END) as high_confidence\nFROM `leaderboard_entries`;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute SELECT \n  COUNT(*) as total_entries,\n  SUM(CASE WHEN `identifiedChampions` IS NOT NULL THEN 1 ELSE 0 END) as identified_entries,\n  SUM(CASE WHEN CAST(`aiConfidence` AS DECIMAL(5,2)) >= 0.70 THEN 1 ELSE 0 END) as high_confidence\nFROM `leaderboard_entries`;",
+  "rows": [
+    {
+      "total_entries": "4752",
+      "identified_entries": "18",
+      "high_confidence": "18"
+    }
+  ],
+  "messages": [],
+  "stdout": "total_entries\tidentified_entries\thigh_confidence\n4752\t18\t18\n",
+  "stderr": "",
+  "execution_time_ms": 61
+}

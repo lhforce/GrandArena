@@ -1,0 +1,15 @@
+{
+  "query": "SELECT COUNT(*) as total, COUNT(identifiedChampions) as identified, COUNT(CASE WHEN aiConfidence >= 0.7 THEN 1 END) as high_confidence FROM leaderboard_entries;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute SELECT COUNT(*) as total, COUNT(identifiedChampions) as identified, COUNT(CASE WHEN aiConfidence >= 0.7 THEN 1 END) as high_confidence FROM leaderboard_entries;",
+  "rows": [
+    {
+      "total": "4752",
+      "identified": "18",
+      "high_confidence": "18"
+    }
+  ],
+  "messages": [],
+  "stdout": "total\tidentified\thigh_confidence\n4752\t18\t18\n",
+  "stderr": "",
+  "execution_time_ms": 53
+}

@@ -3,7 +3,7 @@
  * Mobile responsive. Uses actual card images from wallet sync (rarity-specific).
  */
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -51,6 +51,9 @@ export default function LineupBuilder() {
   );
   const [numEntries, setNumEntries] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>("OPEN");
+  const [buildHighlight, setBuildHighlight] = useState(false);
+  const buildBoxRef = useRef<HTMLDivElement>(null);
+  const lineupsRef = useRef<HTMLDivElement>(null);
 
   const contestsQuery = trpc.contests.list.useQuery({ status: statusFilter, limit: 50, offset: 0 });
   const budgetQuery = trpc.lineup.gemBudget.useQuery(undefined, { enabled: isAuthenticated });
@@ -68,7 +71,13 @@ export default function LineupBuilder() {
   });
 
   const optimizeMutation = trpc.lineup.optimize.useMutation({
-    onSuccess: (data) => toast.success(`Built ${data.lineups.length} lineup${data.lineups.length > 1 ? "s" : ""}`),
+    onSuccess: (data) => {
+      toast.success(`Built ${data.lineups.length} lineup${data.lineups.length > 1 ? "s" : ""}`);
+      // Auto-scroll to first lineup after optimization completes
+      setTimeout(() => {
+        lineupsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
+    },
     onError: (err) => toast.error(`Optimization failed: ${err.message}`),
   });
 
@@ -206,7 +215,16 @@ export default function LineupBuilder() {
                 const isFull = !isUnlimited && curEntries >= maxE;
                 const spotsLeft = isUnlimited ? Infinity : maxE - curEntries;
                 return (
-                <div key={contest.id} onClick={() => !isFull && setSelectedContestId(contest.id)}
+                <div key={contest.id} onClick={() => {
+                    if (isFull) return;
+                    setSelectedContestId(contest.id);
+                    // Auto-scroll to Build box and highlight it
+                    setBuildHighlight(true);
+                    setTimeout(() => {
+                      buildBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }, 100);
+                    setTimeout(() => setBuildHighlight(false), 2500);
+                  }}
                   className={`p-2.5 sm:p-3 rounded-lg border transition-all ${
                     isFull ? "border-border/50 opacity-50 cursor-not-allowed" :
                     selectedContestId === contest.id ? "border-gold bg-gold/10 cursor-pointer" : "border-border hover:border-gold/40 cursor-pointer"
@@ -249,7 +267,9 @@ export default function LineupBuilder() {
 
       {/* Optimizer Controls */}
       {selectedContest && (
-        <Card className="glass-card border-teal/20">
+        <Card ref={buildBoxRef} className={`glass-card transition-all duration-500 ${
+          buildHighlight ? "border-gold ring-2 ring-gold/50 shadow-[0_0_20px_rgba(255,215,0,0.15)]" : "border-teal/20"
+        }`}>
           <CardHeader className="pb-3">
             <CardTitle className="text-base sm:text-lg flex items-center gap-2">
               <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-teal" />
@@ -289,7 +309,7 @@ export default function LineupBuilder() {
 
       {/* Results with Card Artwork */}
       {optimizeMutation.data && (
-        <div className="space-y-4">
+        <div ref={lineupsRef} className="space-y-4">
           {optimizeMutation.data.warnings.length > 0 && (
             <Card className="glass-card border-destructive/30">
               <CardContent className="p-3 sm:pt-4 sm:pb-4">
@@ -310,6 +330,24 @@ export default function LineupBuilder() {
             <span>Cost: <strong className="text-teal">{optimizeMutation.data.gemCost.toLocaleString()}</strong></span>
             <span>Budget left: <strong className="text-teal">{optimizeMutation.data.remainingBudget.toLocaleString()}</strong></span>
           </div>
+
+          {/* Empirical Data Confidence Indicator */}
+          {optimizeMutation.data.empiricalData && (
+            <div className="flex items-center gap-2 text-[10px] sm:text-xs text-muted-foreground bg-card/50 rounded-lg px-3 py-2 border border-border/50">
+              <div className={`w-2 h-2 rounded-full shrink-0 ${
+                optimizeMutation.data.empiricalData.totalEntriesAnalyzed > 100
+                  ? "bg-green-500" : optimizeMutation.data.empiricalData.totalEntriesAnalyzed > 0
+                  ? "bg-gold" : "bg-muted-foreground"
+              }`} />
+              <span>
+                {optimizeMutation.data.empiricalData.totalEntriesAnalyzed > 0 ? (
+                  <>Scoring uses <strong className="text-foreground">{optimizeMutation.data.empiricalData.championsWithData}</strong> champions from <strong className="text-foreground">{optimizeMutation.data.empiricalData.totalEntriesAnalyzed}</strong> winning entries across <strong className="text-foreground">{optimizeMutation.data.empiricalData.totalContestsAnalyzed}</strong> contests</>
+                ) : (
+                  <>Scoring uses class-based model estimates. Run AI Identify on Dashboard to improve accuracy with real contest data.</>
+                )}
+              </span>
+            </div>
+          )}
 
           {optimizeMutation.data.lineups.map((lineup: any, idx: number) => (
             <Card key={idx} className="glass-card border-gold/20">

@@ -122,7 +122,7 @@ export const lineupRouter = router({
         imageUrl: s.imageUrl ?? null,
       }));
 
-      // Load champion performance stats from database
+      // Load champion performance stats from database (class-based model)
       let statsRows = await db.select().from(championStats);
 
       // Auto-refresh stats if the table is empty (first-time use)
@@ -145,14 +145,52 @@ export const lineupRouter = router({
         }
       }
 
+      // Load empirical stats from winning lineups
+      const { aggregateEmpiricalStats, blendStats } = await import("./empiricalStats");
+      let empiricalResult = { champions: new Map(), totalEntriesAnalyzed: 0, totalContestsAnalyzed: 0, lastUpdated: new Date() } as Awaited<ReturnType<typeof aggregateEmpiricalStats>>;
+      try {
+        empiricalResult = await aggregateEmpiricalStats(0.7);
+        if (empiricalResult.totalEntriesAnalyzed > 0) {
+          console.log(`[Optimizer] Loaded empirical data: ${empiricalResult.totalEntriesAnalyzed} entries, ${empiricalResult.champions.size} unique champions`);
+        }
+      } catch (err) {
+        console.error("[Optimizer] Failed to load empirical stats:", err);
+      }
+
+      // Build blended performance stats (model + empirical)
       const performanceStats = new Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number }>();
+      const blendMetadata: Record<string, { dataSource: string; empiricalWeight: number; appearances: number }> = {};
+
       for (const row of statsRows) {
-        performanceStats.set(row.championTokenId, {
+        const modelStats = {
           avgKills: Number(row.avgKills ?? 0),
           avgBalls: Number(row.avgBalls ?? 0),
           avgWartDistance: Number(row.avgWartDistance ?? 0),
           winRate: Number(row.winRate ?? 0),
+        };
+
+        // Look up empirical data for this champion
+        const empirical = empiricalResult.champions.get(row.championTokenId);
+        const rarity = row.fur ?? "Basic"; // Use fur as proxy; actual rarity comes from card
+
+        // Find the card's actual rarity from the user's inventory
+        const userCard = available.mokis.find(m => m.championTokenId === row.championTokenId);
+        const cardRarity = userCard?.rarity ?? "Basic";
+
+        const blended = blendStats(modelStats, empirical, cardRarity);
+
+        performanceStats.set(row.championTokenId, {
+          avgKills: blended.avgKills,
+          avgBalls: blended.avgBalls,
+          avgWartDistance: blended.avgWartDistance,
+          winRate: blended.winRate,
         });
+
+        blendMetadata[row.championTokenId] = {
+          dataSource: blended.dataSource,
+          empiricalWeight: blended.empiricalWeight,
+          appearances: blended.empiricalAppearances,
+        };
       }
 
       const contestRules: ContestRules = {
@@ -182,6 +220,12 @@ export const lineupRouter = router({
         entryFee: contest.entryFee,
         remainingBudget,
         spentToday,
+        empiricalData: {
+          totalEntriesAnalyzed: empiricalResult.totalEntriesAnalyzed,
+          totalContestsAnalyzed: empiricalResult.totalContestsAnalyzed,
+          championsWithData: empiricalResult.champions.size,
+          blendMetadata,
+        },
       };
     }),
 

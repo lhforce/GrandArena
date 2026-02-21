@@ -154,3 +154,11 @@
 
 ## Bug Fixes Round 9
 - [x] Fix duplicate champions in lineup — optimizer must enforce uniqueness by champion name, not just tokenId
+
+## Optimizer Improvement: Empirical Data Integration
+- [x] Aggregate actual champion performance from AI-identified winning lineups
+- [x] Build empirical stats (avg score per champion, win frequency, scheme synergy) from completed contests
+- [x] Blend empirical stats with class-based model in the optimizer scoring
+- [x] Show data confidence indicators in Lineup Builder (model-based vs empirical)
+- [x] Auto-scroll to Build box and add yellow outline highlight after contest selection in Lineup Builder
+- [x] Auto-scroll to first generated lineup after clicking Optimize (no highlight needed)

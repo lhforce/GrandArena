@@ -1,0 +1,50 @@
+{
+  "query": "SELECT `id`, `rank`, `score`, `identifiedChampions`, `identifiedScheme`, `aiConfidence` FROM `leaderboard_entries` WHERE `identifiedChampions` IS NOT NULL LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute SELECT `id`, `rank`, `score`, `identifiedChampions`, `identifiedScheme`, `aiConfidence` FROM `leaderboard_entries` WHERE `identifiedChampions` IS NOT NULL LIMIT 5;",
+  "rows": [
+    {
+      "id": "1",
+      "rank": "1",
+      "score": "4555",
+      "identifiedChampions": "[{\"championTokenId\": \"1105\", \"confidence\": 1, \"name\": \"Golden Purps\", \"rarity\": \"Basic\"}, {\"championTokenId\": \"8415\", \"confidence\": 1, \"name\": \"Golden Delicious\", \"rarity\": \"Rare\"}, {\"championTokenId\": \"523\", \"confidence\": 1, \"name\": \"Goldilocks\", \"rarity\": \"Epic\"}, {\"championTokenId\": \"6821\", \"confidence\": 1, \"name\": \"24K\", \"rarity\": \"Rare\"}]",
+      "identifiedScheme": "Golden Shower",
+      "aiConfidence": "1.00"
+    },
+    {
+      "id": "2",
+      "rank": "2",
+      "score": "4293",
+      "identifiedChampions": "[{\"championTokenId\": \"1521\", \"confidence\": 1, \"name\": \"UlquiorrA\", \"rarity\": \"Basic\"}, {\"championTokenId\": \"8833\", \"confidence\": 1, \"name\": \"MINOZ\", \"rarity\": \"Basic\"}, {\"championTokenId\": \"2575\", \"confidence\": 1, \"name\": \"Peeltergeist\", \"rarity\": \"Rare\"}, {\"championTokenId\": \"5755\", \"confidence\": 1, \"name\": \"Keanu\", \"rarity\": \"Rare\"}]",
+      "identifiedScheme": "Divine Intervention",
+      "aiConfidence": "1.00"
+    },
+    {
+      "id": "3",
+      "rank": "3",
+      "score": "3665",
+      "identifiedChampions": "[{\"championTokenId\": \"7370\", \"confidence\": 1, \"name\": \"Hoppi\", \"rarity\": \"Rare\"}, {\"championTokenId\": \"818\", \"confidence\": 1, \"name\": \"POOtaTurd\", \"rarity\": \"Rare\"}, {\"championTokenId\": \"6014\", \"confidence\": 1, \"name\": \"YP The Fearless\", \"rarity\": \"Rare\"}, {\"championTokenId\": \"3320\", \"confidence\": 1, \"name\": \"Specter\", \"rarity\": \"Rare\"}]",
+      "identifiedScheme": "Divine Intervention",
+      "aiConfidence": "1.00"
+    },
+    {
+      "id": "4",
+      "rank": "4",
+      "score": "3611",
+      "identifiedChampions": "[{\"championTokenId\": \"3563\", \"confidence\": 1, \"name\": \"Cry Bunny\", \"rarity\": \"Basic\"}, {\"championTokenId\": \"8401\", \"confidence\": 1, \"name\": \"I WILL FARM U\", \"rarity\": \"Basic\"}, {\"championTokenId\": \"2575\", \"confidence\": 1, \"name\": \"Peeltergeist\", \"rarity\": \"Rare\"}, {\"championTokenId\": \"3320\", \"confidence\": 1, \"name\": \"Specter\", \"rarity\": \"Rare\"}]",
+      "identifiedScheme": "Divine Intervention",
+      "aiConfidence": "1.00"
+    },
+    {
+      "id": "5",
+      "rank": "5",
+      "score": "3520",
+      "identifiedChampions": "[{\"championTokenId\": \"5110\", \"confidence\": 1, \"name\": \"Mugsy\", \"rarity\": \"Basic\"}, {\"championTokenId\": \"1105\", \"confidence\": 1, \"name\": \"Golden Purps\", \"rarity\": \"Basic\"}, {\"championTokenId\": \"6821\", \"confidence\": 1, \"name\": \"24K\", \"rarity\": \"Rare\"}, {\"championTokenId\": \"8509\", \"confidence\": 1, \"name\": \"Rynnie\", \"rarity\": \"Epic\"}]",
+      "identifiedScheme": "Golden Shower",
+      "aiConfidence": "1.00"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\trank\tscore\tidentifiedChampions\tidentifiedScheme\taiConfidence\n1\t1\t4555\t[{\"championTokenId\": \"1105\", \"confidence\": 1, \"name\": \"Golden Purps\", \"rarity\": \"Basic\"}, {\"championTokenId\": \"8415\", \"confidence\": 1, \"name\": \"Golden Delicious\", \"rarity\": \"Rare\"}, {\"championTokenId\": \"523\", \"confidence\": 1, \"name\": \"Goldilocks\", \"rarity\": \"Epic\"}, {\"championTokenId\": \"6821\", \"confidence\": 1, \"name\": \"24K\", \"rarity\": \"Rare\"}]\tGolden Shower\t1.00\n2\t2\t4293\t[{\"championTokenId\": \"1521\", \"confidence\": 1, \"name\": \"UlquiorrA\", \"rarity\": \"Basic\"}, {\"championTokenId\": \"8833\", \"confidence\": 1, \"name\": \"MINOZ\", \"rarity\": \"Basic\"}, {\"championTokenId\": \"2575\", \"confidence\": 1, \"name\": \"Peeltergeist\", \"rarity\": \"Rare\"}, {\"championTokenId\": \"5755\", \"confidence\": 1, \"name\": \"Keanu\", \"rarity\": \"Rare\"}]\tDivine Intervention\t1.00\n3\t3\t3665\t[{\"championTokenId\": \"7370\", \"confidence\": 1, \"name\": \"Hoppi\", \"rarity\": \"Rare\"}, {\"championTokenId\": \"818\", \"confidence\": 1, \"name\": \"POOtaTurd\", \"rarity\": \"Rare\"}, {\"championTokenId\": \"6014\", \"confidence\": 1, \"name\": \"YP The Fearless\", \"rarity\": \"Rare\"}, {\"championTokenId\": \"3320\", \"confidence\": 1, \"name\": \"Specter\", \"rarity\": \"Rare\"}]\tDivine Intervention\t1.00\n4\t4\t3611\t[{\"championTokenId\": \"3563\", \"confidence\": 1, \"name\": \"Cry Bunny\", \"rarity\": \"Basic\"}, {\"championTokenId\": \"8401\", \"confidence\": 1, \"name\": \"I WILL FARM U\", \"rarity\": \"Basic\"}, {\"championTokenId\": \"2575\", \"confidence\": 1, \"name\": \"Peeltergeist\", \"rarity\": \"Rare\"}, {\"championTokenId\": \"3320\", \"confidence\": 1, \"name\": \"Specter\", \"rarity\": \"Rare\"}]\tDivine Intervention\t1.00\n5\t5\t3520\t[{\"championTokenId\": \"5110\", \"confidence\": 1, \"name\": \"Mugsy\", \"rarity\": \"Basic\"}, {\"championTokenId\": \"1105\", \"confidence\": 1, \"name\": \"Golden Purps\", \"rarity\": \"Basic\"}, {\"championTokenId\": \"6821\", \"confidence\": 1, \"name\": \"24K\", \"rarity\": \"Rare\"}, {\"championTokenId\": \"8509\", \"confidence\": 1, \"name\": \"Rynnie\", \"rarity\": \"Epic\"}]\tGolden Shower\t1.00\n",
+  "stderr": "",
+  "execution_time_ms": 58
+}
