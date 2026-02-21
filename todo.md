@@ -169,3 +169,14 @@
 - [x] Boost reliable scheme cards (trait-based, kills, ball deliveries, wart riding)
 - [x] Build scheme performance rankings from winning lineup data
 - [x] Override risky penalty when empirical winning data shows consistent success with a risky scheme
+
+## Matchup Intelligence System (GATracker Match History)
+- [x] Add match_history and matchup_stats database tables
+- [x] Build match history scraper using GATracker webhook API (mokiMatches endpoint)
+- [ ] Scrape match data for all 179 champions (901+ matches each, paginated)
+- [x] Calculate head-to-head champion matchup win rates from match data
+- [x] Calculate per-champion real performance stats (kills, balls, wart) from actual matches
+- [x] Calculate class-vs-class matchup advantages
+- [x] Build Matchup Intelligence UI page with champion lookup and head-to-head comparison
+- [ ] Integrate match-derived performance stats into lineup optimizer scoring
+- [ ] Add "Scrape Match History" button to Dashboard

@@ -245,3 +245,62 @@ export const favoriteContests = mysqlTable("favorite_contests", {
 
 export type FavoriteContest = typeof favoriteContests.$inferSelect;
 export type InsertFavoriteContest = typeof favoriteContests.$inferInsert;
+
+// ─── Match History (scraped from GATracker mokiMatches API) ────────
+export const matchHistory = mysqlTable("match_history", {
+  id: int("id").autoincrement().primaryKey(),
+  matchId: varchar("matchId", { length: 64 }).notNull().unique(), // MongoDB ObjectId from GA
+  gameType: varchar("gameType", { length: 32 }).default("mokiMayhem"),
+  winType: varchar("winType", { length: 32 }), // eliminations, wart, gacha
+  teamWon: int("teamWon"), // 1 or 2
+  duration: decimal("duration", { precision: 8, scale: 2 }),
+  matchDate: varchar("matchDate", { length: 16 }), // YYYY-MM-DD
+  isBye: boolean("isBye").default(false),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("idx_mh_date").on(table.matchDate),
+  index("idx_mh_wintype").on(table.winType),
+]);
+
+export type MatchHistory = typeof matchHistory.$inferSelect;
+export type InsertMatchHistory = typeof matchHistory.$inferInsert;
+
+// ─── Match Player Stats (per-player stats in each match) ──────────
+export const matchPlayerStats = mysqlTable("match_player_stats", {
+  id: int("id").autoincrement().primaryKey(),
+  matchId: varchar("matchId", { length: 64 }).notNull(),
+  championTokenId: int("championTokenId").notNull(), // MOKI token ID (e.g., 5256)
+  championName: varchar("championName", { length: 128 }),
+  championClass: varchar("championClass", { length: 32 }),
+  team: int("team").notNull(), // 1 or 2
+  kills: int("kills").default(0),
+  balls: int("balls").default(0),
+  wartDistance: decimal("wartDistance", { precision: 10, scale: 2 }).default("0"),
+  isWinner: boolean("isWinner").default(false),
+  matchDate: varchar("matchDate", { length: 16 }),
+}, (table) => [
+  index("idx_mps_match").on(table.matchId),
+  index("idx_mps_champion").on(table.championTokenId),
+  index("idx_mps_date").on(table.matchDate),
+  uniqueIndex("idx_mps_match_champ").on(table.matchId, table.championTokenId),
+]);
+
+export type MatchPlayerStat = typeof matchPlayerStats.$inferSelect;
+export type InsertMatchPlayerStat = typeof matchPlayerStats.$inferInsert;
+
+// ─── Match Scrape Progress (track which champions have been scraped) ─
+export const matchScrapeProgress = mysqlTable("match_scrape_progress", {
+  id: int("id").autoincrement().primaryKey(),
+  championTokenId: int("championTokenId").notNull().unique(),
+  championName: varchar("championName", { length: 128 }),
+  totalMatchesAvailable: int("totalMatchesAvailable").default(0),
+  matchesScraped: int("matchesScraped").default(0),
+  pagesScraped: int("pagesScraped").default(0),
+  totalPages: int("totalPages").default(0),
+  status: varchar("status", { length: 16 }).default("pending"), // pending, in_progress, completed, failed
+  lastScrapedAt: timestamp("lastScrapedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type MatchScrapeProgress = typeof matchScrapeProgress.$inferSelect;
+export type InsertMatchScrapeProgress = typeof matchScrapeProgress.$inferInsert;

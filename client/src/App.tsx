@@ -13,6 +13,7 @@ import MyCards from "@/pages/MyCards";
 import ChampionStats from "@/pages/ChampionStats";
 import TelegramAlerts from "@/pages/TelegramAlerts";
 import Settings from "@/pages/Settings";
+import MatchupIntel from "@/pages/MatchupIntel";
 
 function Router() {
   return (
@@ -25,6 +26,7 @@ function Router() {
         <Route path="/my-cards" component={MyCards} />
         <Route path="/champion-stats" component={ChampionStats} />
         <Route path="/telegram-alerts" component={TelegramAlerts} />
+        <Route path="/matchup-intel" component={MatchupIntel} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
       </Switch>

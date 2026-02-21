@@ -32,6 +32,7 @@ import {
   Settings,
   BarChart3,
   Sparkles,
+  Crosshair,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -45,6 +46,7 @@ const menuItems = [
   { icon: Sparkles, label: "Lineup Builder", path: "/lineup-builder" },
   { icon: Wallet, label: "My Cards", path: "/my-cards" },
   { icon: BarChart3, label: "Champion Stats", path: "/champion-stats" },
+  { icon: Crosshair, label: "Matchup Intel", path: "/matchup-intel" },
   { icon: Bot, label: "Telegram Alerts", path: "/telegram-alerts" },
   { icon: Settings, label: "Settings", path: "/settings" },
 ];
