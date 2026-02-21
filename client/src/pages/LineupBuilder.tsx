@@ -3,7 +3,8 @@
  * Mobile responsive. Uses actual card images from wallet sync (rarity-specific).
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -41,9 +42,17 @@ const FORMAT_LABELS: Record<string, string> = {
 
 export default function LineupBuilder() {
   const { isAuthenticated } = useAuth();
-  const [selectedContestId, setSelectedContestId] = useState<number | null>(null);
+  const searchString = useSearch();
+  const searchParams = new URLSearchParams(searchString);
+  const preselectedContestId = searchParams.get("contestId");
+
+  const [selectedContestId, setSelectedContestId] = useState<number | null>(
+    preselectedContestId ? Number(preselectedContestId) : null
+  );
   const [numEntries, setNumEntries] = useState(1);
-  const [statusFilter, setStatusFilter] = useState<string>("LIVE");
+  const [statusFilter, setStatusFilter] = useState<string>(
+    preselectedContestId ? "OPEN" : "LIVE"
+  );
 
   const contestsQuery = trpc.contests.list.useQuery({ status: statusFilter, limit: 50, offset: 0 });
   const budgetQuery = trpc.lineup.gemBudget.useQuery(undefined, { enabled: isAuthenticated });

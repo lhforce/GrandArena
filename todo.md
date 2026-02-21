@@ -136,3 +136,8 @@
 - [x] Show which contests have open entry slots vs full contests
 - [x] Scraper should capture current entry count from GA API
 - [x] Remove gem budget cap from lineup optimizer — always build all requested lineups regardless of budget
+
+## Contests Page UX Improvements
+- [x] Sort open contests: available entry slots first, then full contests
+- [x] Add FULL accordion — collapsible red "FULL" section grouping full contests
+- [x] Click-to-build — clicking an open contest with available entries navigates to Lineup Builder with that contest pre-selected
