@@ -108,3 +108,15 @@
 
 ## Bug Fixes Round 4
 - [x] Fix "Scrape Contests" button spinning indefinitely with no results (made non-blocking with auto-polling progress)
+
+## Mobile Responsiveness
+- [x] DashboardLayout: collapsible sidebar with hamburger menu on mobile (built-in SidebarTrigger)
+- [x] Dashboard page: stack stat cards vertically, touch-friendly buttons
+- [x] Contests page: responsive filters and cards with flex-wrap
+- [x] Winning Lineups page: responsive card grid, scrollable tables
+- [x] Lineup Builder page: stacking layout, touch-friendly controls
+- [x] My Cards page: responsive card grid (2-col mobile), mobile sync button
+- [x] Champion Stats page: horizontal-scroll table with min-w, stacking filters
+- [x] Telegram Alerts page: stacking cards, responsive grids
+- [x] Settings page: full-width inputs, responsive text
+- [x] Home/Scheme Card tool: responsive WalletScreen, SchemesScreen, ChampionsScreen grids

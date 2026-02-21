@@ -69,8 +69,8 @@ export default function Settings() {
     return (
       <div className="space-y-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-gold">Settings</h1>
-          <p className="text-muted-foreground text-sm mt-1">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gold">Settings</h1>
+          <p className="text-muted-foreground text-xs sm:text-sm mt-1">
             Configure your account preferences
           </p>
         </div>
@@ -88,8 +88,8 @@ export default function Settings() {
     <div className="space-y-6 max-w-2xl">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-gold">Settings</h1>
-        <p className="text-muted-foreground text-sm mt-1">
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gold">Settings</h1>
+        <p className="text-muted-foreground text-xs sm:text-sm mt-1">
           Configure your wallet, budget, and alert preferences
         </p>
       </div>

@@ -77,7 +77,7 @@ export default function TelegramAlerts() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold font-heading text-gold">
+        <h1 className="text-xl sm:text-2xl font-bold font-heading text-gold">
           Telegram Alerts
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -86,7 +86,7 @@ export default function TelegramAlerts() {
       </div>
 
       {/* Status Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
         <Card className="bg-card/50 border-border/50">
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
@@ -183,7 +183,7 @@ export default function TelegramAlerts() {
       )}
 
       {/* Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
         {/* Test Connection */}
         <Card className="bg-card/50 border-border/50">
           <CardHeader className="pb-3">
@@ -253,7 +253,7 @@ export default function TelegramAlerts() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
             <div className="bg-background/30 rounded-lg p-3 text-center">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
                 New Contest Alerts

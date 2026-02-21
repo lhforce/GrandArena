@@ -47,7 +47,7 @@ export default function WinningLineups() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-gold">Winning Lineups</h1>
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gold">Winning Lineups</h1>
         <p className="text-muted-foreground text-sm mt-1">
           AI-identified champion combinations from top contest placements
         </p>
@@ -56,7 +56,7 @@ export default function WinningLineups() {
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <Select value={rarity} onValueChange={setRarity}>
-          <SelectTrigger className="w-48 glass-card">
+          <SelectTrigger className="w-full sm:w-48 glass-card">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -67,7 +67,7 @@ export default function WinningLineups() {
         </Select>
 
         <Select value={format} onValueChange={setFormat}>
-          <SelectTrigger className="w-40 glass-card">
+          <SelectTrigger className="w-full sm:w-40 glass-card">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -117,7 +117,7 @@ function WinningLineupCard({ entry, index }: { entry: any; index: number }) {
   return (
     <Card className="glass-card hover:border-gold/20 transition-colors">
       <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-4 mb-3">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4 mb-3">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-gold/20 flex items-center justify-center shrink-0">
               {entry.rank <= 3 ? (

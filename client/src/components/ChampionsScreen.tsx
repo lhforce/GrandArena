@@ -455,7 +455,7 @@ export default function ChampionsScreen({ scheme, walletAddress, onBack }: Champ
             <p className="text-sm mt-1">Try adjusting your filters</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-2 sm:gap-3">
             {displayChampions.map((champion, i) => {
               const isOwned = ownedIds.has(champion.championTokenId);
               const prices = floorPrices.get(champion.name);

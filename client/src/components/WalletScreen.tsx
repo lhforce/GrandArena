@@ -63,7 +63,7 @@ export default function WalletScreen({ onWalletSubmit }: WalletScreenProps) {
             </h1>
           </div>
         </div>
-        <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-3" style={{ fontFamily: 'Rajdhani, sans-serif' }}>
+        <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-foreground mb-3" style={{ fontFamily: 'Rajdhani, sans-serif' }}>
           Scheme Card Tool
         </h2>
         <p className="text-muted-foreground text-base max-w-md mx-auto leading-relaxed">
@@ -138,7 +138,7 @@ export default function WalletScreen({ onWalletSubmit }: WalletScreenProps) {
         </div>
 
         {/* Feature hints */}
-        <div className="mt-6 grid grid-cols-3 gap-3 text-center">
+        <div className="mt-6 grid grid-cols-3 gap-2 sm:gap-3 text-center">
           {[
             { label: '35 Schemes', sub: 'All Season 1' },
             { label: '180 Champions', sub: 'Full roster' },
