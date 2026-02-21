@@ -1,0 +1,170 @@
+{
+  "query": "SELECT name, contestStatus, entries, maxEntries, maxEntriesPerUser, entryFee FROM contests WHERE contestStatus IN ('OPEN', 'LIVE') ORDER BY contestStatus, name LIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute SELECT name, contestStatus, entries, maxEntries, maxEntriesPerUser, entryFee FROM contests WHERE contestStatus IN ('OPEN', 'LIVE') ORDER BY contestStatus, name LIMIT 20;",
+  "rows": [
+    {
+      "name": "50/50 Basic Only Half-Day Teapot Artifact",
+      "contestStatus": "LIVE",
+      "entries": "50",
+      "maxEntries": "50",
+      "maxEntriesPerUser": "5",
+      "entryFee": "1000"
+    },
+    {
+      "name": "50/50 Basic or Rare Only Half-Day Tama Mart",
+      "contestStatus": "LIVE",
+      "entries": "200",
+      "maxEntries": "200",
+      "maxEntriesPerUser": "15",
+      "entryFee": "500"
+    },
+    {
+      "name": "50/50 Commons Only Daily Gate Island",
+      "contestStatus": "LIVE",
+      "entries": "100",
+      "maxEntries": "100",
+      "maxEntriesPerUser": "5",
+      "entryFee": "100"
+    },
+    {
+      "name": "50/50 Epic Only Half-Day Gate Syndicate",
+      "contestStatus": "LIVE",
+      "entries": "25",
+      "maxEntries": "25",
+      "maxEntriesPerUser": "1",
+      "entryFee": "500"
+    },
+    {
+      "name": "50/50 Legendary Only Half-Day Buff Council",
+      "contestStatus": "LIVE",
+      "entries": "50",
+      "maxEntries": "50",
+      "maxEntriesPerUser": "3",
+      "entryFee": "2500"
+    },
+    {
+      "name": "50/50 Legendary Only Half-Day Eggu Wart",
+      "contestStatus": "LIVE",
+      "entries": "50",
+      "maxEntries": "50",
+      "maxEntriesPerUser": "5",
+      "entryFee": "2500"
+    },
+    {
+      "name": "50/50 Open Daily Archipelago Tama",
+      "contestStatus": "LIVE",
+      "entries": "41",
+      "maxEntries": "100",
+      "maxEntriesPerUser": "5",
+      "entryFee": "2500"
+    },
+    {
+      "name": "50/50 Open Daily Bald Ambrosia",
+      "contestStatus": "LIVE",
+      "entries": "51",
+      "maxEntries": "100",
+      "maxEntriesPerUser": "5",
+      "entryFee": "2500"
+    },
+    {
+      "name": "50/50 Open Daily Balls Factory",
+      "contestStatus": "LIVE",
+      "entries": "100",
+      "maxEntries": "100",
+      "maxEntriesPerUser": "5",
+      "entryFee": "300"
+    },
+    {
+      "name": "50/50 Open Daily Council Festival",
+      "contestStatus": "LIVE",
+      "entries": "54",
+      "maxEntries": "100",
+      "maxEntriesPerUser": "5",
+      "entryFee": "1000"
+    },
+    {
+      "name": "50/50 Open Daily Island Field",
+      "contestStatus": "LIVE",
+      "entries": "100",
+      "maxEntries": "100",
+      "maxEntriesPerUser": "5",
+      "entryFee": "300"
+    },
+    {
+      "name": "50/50 Open Daily Island Fortune",
+      "contestStatus": "LIVE",
+      "entries": "150",
+      "maxEntries": "150",
+      "maxEntriesPerUser": "15",
+      "entryFee": "1500"
+    },
+    {
+      "name": "50/50 Open Daily Koban Festival",
+      "contestStatus": "LIVE",
+      "entries": "100",
+      "maxEntries": "100",
+      "maxEntriesPerUser": "5",
+      "entryFee": "400"
+    },
+    {
+      "name": "50/50 Open Daily Luck Tanuki",
+      "contestStatus": "LIVE",
+      "entries": "92",
+      "maxEntries": "100",
+      "maxEntriesPerUser": "5",
+      "entryFee": "1000"
+    },
+    {
+      "name": "50/50 Open Daily Shinobu Sora",
+      "contestStatus": "LIVE",
+      "entries": "200",
+      "maxEntries": "200",
+      "maxEntriesPerUser": "10",
+      "entryFee": "200"
+    },
+    {
+      "name": "50/50 Open Daily Tamakin Yokai",
+      "contestStatus": "LIVE",
+      "entries": "150",
+      "maxEntries": "150",
+      "maxEntriesPerUser": "15",
+      "entryFee": "1500"
+    },
+    {
+      "name": "50/50 Open Daily Trap Anvil",
+      "contestStatus": "LIVE",
+      "entries": "100",
+      "maxEntries": "100",
+      "maxEntriesPerUser": "5",
+      "entryFee": "500"
+    },
+    {
+      "name": "50/50 Open Half-Day Balls Field",
+      "contestStatus": "LIVE",
+      "entries": "200",
+      "maxEntries": "200",
+      "maxEntriesPerUser": "10",
+      "entryFee": "200"
+    },
+    {
+      "name": "50/50 Open Half-Day Council Ambrosia",
+      "contestStatus": "LIVE",
+      "entries": "100",
+      "maxEntries": "100",
+      "maxEntriesPerUser": "5",
+      "entryFee": "300"
+    },
+    {
+      "name": "50/50 Open Half-Day Shinobu Emblem",
+      "contestStatus": "LIVE",
+      "entries": "150",
+      "maxEntries": "150",
+      "maxEntriesPerUser": "10",
+      "entryFee": "500"
+    }
+  ],
+  "messages": [],
+  "stdout": "name\tcontestStatus\tentries\tmaxEntries\tmaxEntriesPerUser\tentryFee\n50/50 Basic Only Half-Day Teapot Artifact\tLIVE\t50\t50\t5\t1000\n50/50 Basic or Rare Only Half-Day Tama Mart\tLIVE\t200\t200\t15\t500\n50/50 Commons Only Daily Gate Island\tLIVE\t100\t100\t5\t100\n50/50 Epic Only Half-Day Gate Syndicate\tLIVE\t25\t25\t1\t500\n50/50 Legendary Only Half-Day Buff Council\tLIVE\t50\t50\t3\t2500\n50/50 Legendary Only Half-Day Eggu Wart\tLIVE\t50\t50\t5\t2500\n50/50 Open Daily Archipelago Tama\tLIVE\t41\t100\t5\t2500\n50/50 Open Daily Bald Ambrosia\tLIVE\t51\t100\t5\t2500\n50/50 Open Daily Balls Factory\tLIVE\t100\t100\t5\t300\n50/50 Open Daily Council Festival\tLIVE\t54\t100\t5\t1000\n50/50 Open Daily Island Field\tLIVE\t100\t100\t5\t300\n50/50 Open Daily Island Fortune\tLIVE\t150\t150\t15\t1500\n50/50 Open Daily Koban Festival\tLIVE\t100\t100\t5\t400\n50/50 Open Daily Luck Tanuki\tLIVE\t92\t100\t5\t1000\n50/50 Open Daily Shinobu Sora\tLIVE\t200\t200\t10\t200\n50/50 Open Daily Tamakin Yokai\tLIVE\t150\t150\t15\t1500\n50/50 Open Daily Trap Anvil\tLIVE\t100\t100\t5\t500\n50/50 Open Half-Day Balls Field\tLIVE\t200\t200\t10\t200\n50/50 Open Half-Day Council Ambrosia\tLIVE\t100\t100\t5\t300\n50/50 Open Half-Day Shinobu Emblem\tLIVE\t150\t150\t10\t500\n",
+  "stderr": "",
+  "execution_time_ms": 54
+}

@@ -19,7 +19,7 @@ import {
 import { toast } from "sonner";
 import {
   Loader2, Swords, Trophy, Gem, AlertTriangle, ChevronRight,
-  Crown, Sparkles, Zap, Lock, Save,
+  Crown, Sparkles, Zap, Lock, Save, Users, RefreshCw,
 } from "lucide-react";
 
 // ─── Constants ──────────────────────────────────────────────────────
@@ -49,6 +49,16 @@ export default function LineupBuilder() {
   const budgetQuery = trpc.lineup.gemBudget.useQuery(undefined, { enabled: isAuthenticated });
   const inventoryQuery = trpc.lineup.inventory.useQuery(undefined, { enabled: isAuthenticated });
   const lockupsQuery = trpc.lineup.lockups.useQuery(undefined, { enabled: isAuthenticated });
+
+  const utils = trpc.useUtils();
+
+  const refreshActive = trpc.contests.refreshActive.useMutation({
+    onSuccess: (result) => {
+      toast.success("Refreshed", { description: `Updated ${result.refreshed} active contests` });
+      utils.contests.list.invalidate();
+    },
+    onError: (err) => toast.error(`Refresh failed: ${err.message}`),
+  });
 
   const optimizeMutation = trpc.lineup.optimize.useMutation({
     onSuccess: (data) => toast.success(`Built ${data.lineups.length} lineup${data.lineups.length > 1 ? "s" : ""}`),
@@ -156,7 +166,7 @@ export default function LineupBuilder() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 sm:space-y-4">
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             {["LIVE", "OPEN", "DRAFT"].map((status) => (
               <Button key={status} variant={statusFilter === status ? "default" : "outline"} size="sm"
                 onClick={() => { setStatusFilter(status); setSelectedContestId(null); }}
@@ -164,6 +174,11 @@ export default function LineupBuilder() {
                 {status === "DRAFT" ? "Upcoming" : status}
               </Button>
             ))}
+            <Button variant="outline" size="sm" onClick={() => refreshActive.mutate()}
+              disabled={refreshActive.isPending}
+              className="h-9 text-xs sm:text-sm border-teal/30 text-teal hover:bg-teal/10 ml-auto">
+              {refreshActive.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            </Button>
           </div>
 
           {contestsQuery.isLoading ? (
@@ -177,10 +192,17 @@ export default function LineupBuilder() {
             </div>
           ) : (
             <div className="space-y-2 max-h-64 overflow-y-auto">
-              {contestsQuery.data?.contests.map((contest) => (
-                <div key={contest.id} onClick={() => setSelectedContestId(contest.id)}
-                  className={`p-2.5 sm:p-3 rounded-lg border cursor-pointer transition-all ${
-                    selectedContestId === contest.id ? "border-gold bg-gold/10" : "border-border hover:border-gold/40"
+              {contestsQuery.data?.contests.map((contest) => {
+                const maxE = contest.maxEntries;
+                const curEntries = contest.entries ?? 0;
+                const isUnlimited = maxE === null || maxE === 0;
+                const isFull = !isUnlimited && curEntries >= maxE;
+                const spotsLeft = isUnlimited ? Infinity : maxE - curEntries;
+                return (
+                <div key={contest.id} onClick={() => !isFull && setSelectedContestId(contest.id)}
+                  className={`p-2.5 sm:p-3 rounded-lg border transition-all ${
+                    isFull ? "border-border/50 opacity-50 cursor-not-allowed" :
+                    selectedContestId === contest.id ? "border-gold bg-gold/10 cursor-pointer" : "border-border hover:border-gold/40 cursor-pointer"
                   }`}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex-1 min-w-0">
@@ -192,17 +214,27 @@ export default function LineupBuilder() {
                             {contest.rarityRestriction.replace("_ONLY", "").replace("_", " ")}
                           </Badge>
                         )}
+                        {isFull && (
+                          <Badge className="text-[9px] h-4 bg-destructive/20 text-destructive border-destructive/30">FULL</Badge>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 sm:gap-4 mt-1 text-[10px] sm:text-xs text-muted-foreground flex-wrap">
                         <span className="flex items-center gap-0.5"><Gem className="w-3 h-3" />{contest.entryFee ?? 0}g</span>
                         <span className="flex items-center gap-0.5"><Trophy className="w-3 h-3" />{Number(contest.prizePool ?? 0).toLocaleString()}</span>
-                        <span>{contest.entries ?? 0}/{contest.maxEntries ?? "∞"}</span>
+                        <span className="flex items-center gap-0.5">
+                          <Users className="w-3 h-3" />
+                          {curEntries}/{isUnlimited ? "\u221E" : maxE}
+                          {!isFull && spotsLeft <= 20 && spotsLeft > 0 && (
+                            <span className="text-gold">({spotsLeft} left)</span>
+                          )}
+                        </span>
                       </div>
                     </div>
                     <ChevronRight className={`w-4 h-4 shrink-0 transition-transform ${selectedContestId === contest.id ? "text-gold rotate-90" : "text-muted-foreground"}`} />
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </CardContent>

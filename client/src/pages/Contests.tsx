@@ -204,7 +204,11 @@ function ContestCard({ contest }: { contest: any }) {
 
   const entryFeeGems = contest.entryFee ?? 0;
   const prizePoolGems = Number(contest.prizePool ?? 0);
-  const spotsLeft = (contest.maxEntries ?? 0) - (contest.entries ?? 0);
+  const maxE = contest.maxEntries;
+  const currentEntries = contest.entries ?? 0;
+  const isUnlimited = maxE === null || maxE === 0;
+  const isFull = !isUnlimited && currentEntries >= maxE;
+  const spotsLeft = isUnlimited ? Infinity : maxE - currentEntries;
 
   return (
     <Card className="glass-card hover:border-gold/20 transition-colors">
@@ -235,10 +239,12 @@ function ContestCard({ contest }: { contest: any }) {
               )}
               <span className="flex items-center gap-1">
                 <Users className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                {contest.entries}/{contest.maxEntries}
-                {spotsLeft > 0 && spotsLeft <= 20 && (
-                  <span className="text-gold">({spotsLeft}!)</span>
-                )}
+                {currentEntries}/{isUnlimited ? "\u221E" : maxE}
+                {isFull ? (
+                  <Badge className="text-[9px] h-4 bg-destructive/20 text-destructive border-destructive/30">FULL</Badge>
+                ) : spotsLeft > 0 && spotsLeft <= 20 ? (
+                  <span className="text-gold">({spotsLeft} left)</span>
+                ) : null}
               </span>
             </div>
           </div>

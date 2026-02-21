@@ -259,20 +259,23 @@ describe("optimizeLineups", () => {
     expect(uniqueIds.size).toBe(allTokenIds.length);
   });
 
-  it("respects budget limits", () => {
+  it("builds all requested lineups even when budget is exceeded", () => {
     const result = optimizeLineups({
       ownedMokis: makeRoster(),
       ownedSchemes: [],
       allSchemes: [],
       contestRules: defaultRules,
-      numEntries: 5,
+      numEntries: 2,
       entryFee: 2000,
-      dailyBudget: 3000,
+      dailyBudget: 1000, // budget only covers 0.5 entries, but should build both
     });
 
-    // Budget allows only 1 entry (3000/2000 = 1.5, floors to 1)
-    expect(result.lineups).toHaveLength(1);
-    expect(result.warnings.length).toBeGreaterThan(0);
+    // Budget no longer limits lineup generation — both entries should be built
+    // (8 champions = max 2 lineups of 4 unique cards each)
+    expect(result.lineups).toHaveLength(2);
+    expect(result.gemCost).toBe(4000); // 2 entries * 2000 gems
+    // Should have an informational warning about exceeding budget
+    expect(result.warnings.some(w => w.includes("exceeds remaining budget"))).toBe(true);
   });
 
   it("respects max entries per user", () => {

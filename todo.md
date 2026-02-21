@@ -130,3 +130,9 @@
 ## Bug Fixes Round 7
 - [x] Fix card image mismatch in Lineup Builder — images don't match champion names in built lineups
 - [x] Fix all projected scores showing same value (2172 pts) — optimizer not loading champion performance stats
+
+## Bug Fixes Round 8
+- [x] Fix contest data to track current entrants vs max entries (e.g., 125/150)
+- [x] Show which contests have open entry slots vs full contests
+- [x] Scraper should capture current entry count from GA API
+- [x] Remove gem budget cap from lineup optimizer — always build all requested lineups regardless of budget

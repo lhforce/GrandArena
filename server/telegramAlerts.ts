@@ -137,9 +137,10 @@ function formatGems(gems: number): string {
 
 function formatContestAlert(contest: GAContest): string {
   const currentEntries = contest.entries ?? 0;
-  const maxEntries = contest.maxEntries ?? 0;
-  const spotsLeft = maxEntries > 0 ? maxEntries - currentEntries : 0;
-  const fillPct = maxEntries > 0 ? Math.round((currentEntries / maxEntries) * 100) : 0;
+  const maxEntries = contest.maxEntries;
+  const isUnlimited = maxEntries == null || maxEntries <= 0;
+  const spotsLeft = isUnlimited ? Infinity : maxEntries - currentEntries;
+  const fillPct = isUnlimited ? 0 : Math.round((currentEntries / maxEntries) * 100);
   const rarity = deriveRarityRestriction(contest);
 
   let msg = `🏟️ <b>${contest.name}</b>\n`;
@@ -149,7 +150,7 @@ function formatContestAlert(contest: GAContest): string {
   if (rarity !== "OPEN") {
     msg += `⭐ Rarity: ${rarity}\n`;
   }
-  if (maxEntries > 0) {
+  if (!isUnlimited) {
     msg += `👥 Spots: ${spotsLeft} remaining (${fillPct}% full)\n`;
   } else {
     msg += `👥 Entries: ${currentEntries} (unlimited)\n`;
@@ -269,9 +270,9 @@ export async function sendDraftContestSummary(
       msg += `🔴 <b>LIVE NOW (${liveContests.length})</b>\n\n`;
       for (const contest of liveContests.slice(0, 8)) {
         const currentEntries = contest.entries ?? 0;
-        const maxEntries = contest.maxEntries ?? 0;
+        const maxEntries = contest.maxEntries;
         const rarity = deriveRarityRestriction(contest);
-        const spotsInfo = maxEntries > 0
+        const spotsInfo = maxEntries != null && maxEntries > 0
           ? `${maxEntries - currentEntries} spots left`
           : `${currentEntries} entries`;
 

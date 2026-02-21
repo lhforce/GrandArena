@@ -1,0 +1,170 @@
+{
+  "query": "SELECT name, contestStatus, entries, maxEntries, maxEntriesPerUser, entryFee FROM contests WHERE contestStatus IN ('OPEN', 'LIVE') ORDER BY contestStatus, entries DESC LIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute SELECT name, contestStatus, entries, maxEntries, maxEntriesPerUser, entryFee FROM contests WHERE contestStatus IN ('OPEN', 'LIVE') ORDER BY contestStatus, entries DESC LIMIT 20;",
+  "rows": [
+    {
+      "name": "Free No Legendary Daily Tanuki Buff",
+      "contestStatus": "LIVE",
+      "entries": "814",
+      "maxEntries": "0",
+      "maxEntriesPerUser": "1",
+      "entryFee": "0"
+    },
+    {
+      "name": "Free No Legendary Daily Horoki Shinobu",
+      "contestStatus": "LIVE",
+      "entries": "782",
+      "maxEntries": "0",
+      "maxEntriesPerUser": "1",
+      "entryFee": "0"
+    },
+    {
+      "name": "Free No Legendary Daily Festival Ratz",
+      "contestStatus": "LIVE",
+      "entries": "738",
+      "maxEntries": "0",
+      "maxEntriesPerUser": "1",
+      "entryFee": "0"
+    },
+    {
+      "name": "Free No Legendary Daily Hotei Sora",
+      "contestStatus": "LIVE",
+      "entries": "670",
+      "maxEntries": "0",
+      "maxEntriesPerUser": "1",
+      "entryFee": "0"
+    },
+    {
+      "name": "Top 20% One-Of-Each Weekly Gate Ambrosia",
+      "contestStatus": "LIVE",
+      "entries": "356",
+      "maxEntries": "500",
+      "maxEntriesPerUser": "25",
+      "entryFee": "300"
+    },
+    {
+      "name": "Top 20% Open Weekly Yokai Island",
+      "contestStatus": "LIVE",
+      "entries": "255",
+      "maxEntries": "500",
+      "maxEntriesPerUser": "25",
+      "entryFee": "300"
+    },
+    {
+      "name": "50/50 Open Daily Shinobu Sora",
+      "contestStatus": "LIVE",
+      "entries": "200",
+      "maxEntries": "200",
+      "maxEntriesPerUser": "10",
+      "entryFee": "200"
+    },
+    {
+      "name": "50/50 Open Half-Day Balls Field",
+      "contestStatus": "LIVE",
+      "entries": "200",
+      "maxEntries": "200",
+      "maxEntriesPerUser": "10",
+      "entryFee": "200"
+    },
+    {
+      "name": "50/50 Basic or Rare Only Half-Day Tama Mart",
+      "contestStatus": "LIVE",
+      "entries": "200",
+      "maxEntries": "200",
+      "maxEntriesPerUser": "15",
+      "entryFee": "500"
+    },
+    {
+      "name": "50/50 Open Daily Island Fortune",
+      "contestStatus": "LIVE",
+      "entries": "150",
+      "maxEntries": "150",
+      "maxEntriesPerUser": "15",
+      "entryFee": "1500"
+    },
+    {
+      "name": "50/50 Open Daily Tamakin Yokai",
+      "contestStatus": "LIVE",
+      "entries": "150",
+      "maxEntries": "150",
+      "maxEntriesPerUser": "15",
+      "entryFee": "1500"
+    },
+    {
+      "name": "50/50 Open Half-Day Shinobu Emblem",
+      "contestStatus": "LIVE",
+      "entries": "150",
+      "maxEntries": "150",
+      "maxEntriesPerUser": "10",
+      "entryFee": "500"
+    },
+    {
+      "name": "Top 20% One-Of-Each Trap Warrior",
+      "contestStatus": "LIVE",
+      "entries": "100",
+      "maxEntries": "100",
+      "maxEntriesPerUser": "5",
+      "entryFee": "300"
+    },
+    {
+      "name": "Top 20% Open Daily Eggu Gacha",
+      "contestStatus": "LIVE",
+      "entries": "100",
+      "maxEntries": "100",
+      "maxEntriesPerUser": "5",
+      "entryFee": "100"
+    },
+    {
+      "name": "50/50 Open Daily Balls Factory",
+      "contestStatus": "LIVE",
+      "entries": "100",
+      "maxEntries": "100",
+      "maxEntriesPerUser": "5",
+      "entryFee": "300"
+    },
+    {
+      "name": "50/50 Open Daily Island Field",
+      "contestStatus": "LIVE",
+      "entries": "100",
+      "maxEntries": "100",
+      "maxEntriesPerUser": "5",
+      "entryFee": "300"
+    },
+    {
+      "name": "Top 20% Open Daily Field Shinobu",
+      "contestStatus": "LIVE",
+      "entries": "100",
+      "maxEntries": "100",
+      "maxEntriesPerUser": "5",
+      "entryFee": "100"
+    },
+    {
+      "name": "50/50 Commons Only Daily Gate Island",
+      "contestStatus": "LIVE",
+      "entries": "100",
+      "maxEntries": "100",
+      "maxEntriesPerUser": "5",
+      "entryFee": "100"
+    },
+    {
+      "name": "50/50 Open Daily Koban Festival",
+      "contestStatus": "LIVE",
+      "entries": "100",
+      "maxEntries": "100",
+      "maxEntriesPerUser": "5",
+      "entryFee": "400"
+    },
+    {
+      "name": "Top 20% Star Cap Daily Syndicate Luck",
+      "contestStatus": "LIVE",
+      "entries": "100",
+      "maxEntries": "100",
+      "maxEntriesPerUser": "5",
+      "entryFee": "300"
+    }
+  ],
+  "messages": [],
+  "stdout": "name\tcontestStatus\tentries\tmaxEntries\tmaxEntriesPerUser\tentryFee\nFree No Legendary Daily Tanuki Buff\tLIVE\t814\t0\t1\t0\nFree No Legendary Daily Horoki Shinobu\tLIVE\t782\t0\t1\t0\nFree No Legendary Daily Festival Ratz\tLIVE\t738\t0\t1\t0\nFree No Legendary Daily Hotei Sora\tLIVE\t670\t0\t1\t0\nTop 20% One-Of-Each Weekly Gate Ambrosia\tLIVE\t356\t500\t25\t300\nTop 20% Open Weekly Yokai Island\tLIVE\t255\t500\t25\t300\n50/50 Open Daily Shinobu Sora\tLIVE\t200\t200\t10\t200\n50/50 Open Half-Day Balls Field\tLIVE\t200\t200\t10\t200\n50/50 Basic or Rare Only Half-Day Tama Mart\tLIVE\t200\t200\t15\t500\n50/50 Open Daily Island Fortune\tLIVE\t150\t150\t15\t1500\n50/50 Open Daily Tamakin Yokai\tLIVE\t150\t150\t15\t1500\n50/50 Open Half-Day Shinobu Emblem\tLIVE\t150\t150\t10\t500\nTop 20% One-Of-Each Trap Warrior\tLIVE\t100\t100\t5\t300\nTop 20% Open Daily Eggu Gacha\tLIVE\t100\t100\t5\t100\n50/50 Open Daily Balls Factory\tLIVE\t100\t100\t5\t300\n50/50 Open Daily Island Field\tLIVE\t100\t100\t5\t300\nTop 20% Open Daily Field Shinobu\tLIVE\t100\t100\t5\t100\n50/50 Commons Only Daily Gate Island\tLIVE\t100\t100\t5\t100\n50/50 Open Daily Koban Festival\tLIVE\t100\t100\t5\t400\nTop 20% Star Cap Daily Syndicate Luck\tLIVE\t100\t100\t5\t300\n",
+  "stderr": "",
+  "execution_time_ms": 57
+}

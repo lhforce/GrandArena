@@ -68,7 +68,7 @@ export const lineupRouter = router({
     .input(
       z.object({
         contestId: z.number(),
-        numEntries: z.number().min(1).max(5).default(1),
+        numEntries: z.number().min(1).max(25).default(1),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -192,7 +192,7 @@ export const lineupRouter = router({
     .input(
       z.object({
         contestId: z.number(),
-        entryNumber: z.number().min(1).max(5),
+        entryNumber: z.number().min(1).max(25),
         champion1TokenId: z.string(),
         champion2TokenId: z.string(),
         champion3TokenId: z.string(),

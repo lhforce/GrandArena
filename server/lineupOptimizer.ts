@@ -344,25 +344,26 @@ export function optimizeLineups(input: OptimizerInput): OptimizerResult {
     );
   }
 
-  // Calculate max entries based on budget
-  const maxAffordable = entryFee > 0 ? Math.floor(dailyBudget / entryFee) : numEntries;
+  // Calculate max entries (only limited by contest rules, not gem budget)
   const actualEntries = Math.min(
     numEntries,
-    contestRules.maxEntriesPerUser,
-    maxAffordable
+    contestRules.maxEntriesPerUser
   );
 
   if (actualEntries < numEntries) {
-    if (maxAffordable < numEntries) {
-      warnings.push(
-        `Budget allows only ${maxAffordable} entries (${entryFee} gems each, ${dailyBudget} budget).`
-      );
-    }
     if (contestRules.maxEntriesPerUser < numEntries) {
       warnings.push(
         `Contest allows max ${contestRules.maxEntriesPerUser} entries per user.`
       );
     }
+  }
+
+  // Informational warning about gem cost (does not limit lineup generation)
+  const totalCost = actualEntries * entryFee;
+  if (entryFee > 0 && totalCost > dailyBudget) {
+    warnings.push(
+      `Total cost ${totalCost.toLocaleString()} gems exceeds remaining budget of ${dailyBudget.toLocaleString()} gems. Lineups built anyway.`
+    );
   }
 
   const usedTokenIds = new Set<string>();
