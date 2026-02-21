@@ -392,3 +392,116 @@ export async function getEmpiricalSummary(): Promise<{
     topChampions,
   };
 }
+
+// ─── Scheme Performance Rankings ──────────────────────────────────
+
+export interface SchemePerformanceData {
+  schemeName: string;
+  appearances: number;
+  avgScore: number;
+  medianScore: number;
+  avgRank: number;
+  winRate: number;       // % of entries using this scheme that placed in top 50%
+  bestScore: number;
+  worstScore: number;
+  confidence: number;    // Based on sample size
+}
+
+/**
+ * Aggregate scheme performance from AI-identified winning lineups.
+ * Returns performance data for each scheme card, ranked by effectiveness.
+ */
+export async function aggregateSchemePerformance(
+  minConfidence: number = 0.5
+): Promise<{
+  schemes: SchemePerformanceData[];
+  totalEntriesAnalyzed: number;
+}> {
+  const db = await getDb();
+  if (!db) {
+    return { schemes: [], totalEntriesAnalyzed: 0 };
+  }
+
+  const rows = await db
+    .select({
+      score: leaderboardEntries.score,
+      rank: leaderboardEntries.rank,
+      identifiedScheme: leaderboardEntries.identifiedScheme,
+      aiConfidence: leaderboardEntries.aiConfidence,
+      contestId: leaderboardEntries.contestId,
+      maxEntries: contests.maxEntries,
+      totalEntries: contests.entries,
+    })
+    .from(leaderboardEntries)
+    .innerJoin(contests, eq(leaderboardEntries.contestId, contests.id))
+    .where(
+      and(
+        isNotNull(leaderboardEntries.identifiedScheme),
+        sql`CAST(${leaderboardEntries.aiConfidence} AS DECIMAL(5,2)) >= ${minConfidence}`
+      )
+    );
+
+  if (rows.length === 0) {
+    return { schemes: [], totalEntriesAnalyzed: 0 };
+  }
+
+  // Group by scheme
+  const schemeData = new Map<string, {
+    scores: number[];
+    ranks: number[];
+    winCount: number;
+    totalInContest: number[];
+  }>();
+
+  for (const row of rows) {
+    const scheme = row.identifiedScheme;
+    if (!scheme) continue;
+
+    let data = schemeData.get(scheme);
+    if (!data) {
+      data = { scores: [], ranks: [], winCount: 0, totalInContest: [] };
+      schemeData.set(scheme, data);
+    }
+
+    const totalEntries = row.totalEntries ?? row.maxEntries ?? 50;
+    const isWinning = row.rank <= Math.ceil(totalEntries * 0.5);
+
+    data.scores.push(row.score);
+    data.ranks.push(row.rank);
+    data.totalInContest.push(totalEntries);
+    if (isWinning) data.winCount++;
+  }
+
+  // Build performance data
+  const schemes: SchemePerformanceData[] = [];
+
+  for (const [schemeName, data] of Array.from(schemeData.entries())) {
+    const sortedScores = [...data.scores].sort((a: number, b: number) => a - b);
+    const median = sortedScores.length % 2 === 0
+      ? (sortedScores[sortedScores.length / 2 - 1] + sortedScores[sortedScores.length / 2]) / 2
+      : sortedScores[Math.floor(sortedScores.length / 2)];
+
+    const avgScore = data.scores.reduce((a: number, b: number) => a + b, 0) / data.scores.length;
+    const avgRank = data.ranks.reduce((a: number, b: number) => a + b, 0) / data.ranks.length;
+
+    schemes.push({
+      schemeName,
+      appearances: data.scores.length,
+      avgScore: Math.round(avgScore),
+      medianScore: Math.round(median),
+      avgRank: Math.round(avgRank * 10) / 10,
+      winRate: Math.round((data.winCount / data.scores.length) * 100) / 100,
+      bestScore: Math.round(sortedScores[sortedScores.length - 1]),
+      worstScore: Math.round(sortedScores[0]),
+      confidence: calculateConfidence(data.scores.length),
+    });
+  }
+
+  // Sort by avgScore descending
+  schemes.sort((a, b) => b.avgScore - a.avgScore);
+
+  return {
+    schemes,
+    totalEntriesAnalyzed: rows.length,
+  };
+}

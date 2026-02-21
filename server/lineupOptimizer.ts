@@ -41,6 +41,7 @@ export interface SchemeCardData {
   hasTraitFilter: boolean;
   qualifyingChampionIds: string[]; // championTokenIds that qualify
   category: SchemeCategory;
+  riskLevel: SchemeRiskLevel;
   imageUrl?: string | null;
 }
 
@@ -114,6 +115,104 @@ export function categorizeScheme(description: string): SchemeCategory {
   if (d.includes("rarity")) return "rarity";
   if (d.includes("when") || d.includes("if")) return "conditional";
   return "other";
+}
+
+// ─── Scheme Risk Classification ───────────────────────────────────
+// Controllability hierarchy:
+// - GUARANTEED: Points come from lineup composition alone (traits, rarity). No RNG.
+// - RELIABLE: Points from common match actions (kills, balls, wart). Happen every match.
+// - MODERATE: Depends on win/loss outcome (~50/50) or common combos.
+// - RISKY: Depends on specific win conditions or uncommon in-game events.
+// - HIGH_RISK: All-or-nothing gambles that can result in 0 total points.
+
+export type SchemeRiskLevel = "guaranteed" | "reliable" | "moderate" | "risky" | "high_risk";
+
+// Controllability multiplier: how much to trust the scheme's theoretical value
+// 1.0 = full value, 0.3 = only 30% of theoretical value counted
+const RISK_MULTIPLIER: Record<SchemeRiskLevel, number> = {
+  guaranteed: 1.15,   // Slight bonus — you KNOW these points will land
+  reliable: 1.0,      // Full value — these actions happen every match
+  moderate: 0.7,      // Discounted — depends on win/loss
+  risky: 0.4,         // Heavy discount — specific events may not trigger
+  high_risk: 0.2,     // Severe discount — could score 0 total points
+};
+
+/**
+ * Classify a scheme card's risk level based on its description.
+ * The scheme card is the one strategic lever — we want to maximize controllable outcomes.
+ */
+export function classifySchemeRisk(name: string, description: string): SchemeRiskLevel {
+  const d = description.toLowerCase();
+  const n = name.toLowerCase();
+
+  // GUARANTEED — Trait-based and rarity-based (points from lineup composition)
+  // These give points just for having the right cards. Zero RNG.
+  if (
+    d.includes("for each") && (
+      d.includes("trait") || d.includes("fur") || d.includes("eye") ||
+      d.includes("mouth") || d.includes("mask") || d.includes("overalls") ||
+      d.includes("kimono") || d.includes("apron") || d.includes("onesie") ||
+      d.includes("head") || d.includes("1 of 1") || d.includes("tongue")
+    )
+  ) return "guaranteed";
+  if (d.includes("unique card rarity")) return "guaranteed";
+
+  // RELIABLE — Common match actions (kills, balls, wart riding)
+  // These happen every match, just the volume varies.
+  if (d.includes("1.5x") && d.includes("elimination")) return "reliable"; // Aggressive Specialization
+  if (d.includes("1.3x") && d.includes("gacha ball")) return "reliable"; // Collective Specialization
+  if (d.includes("per moki elimination") || d.includes("per elimination")) return "reliable";
+  if (d.includes("per gacha ball delivered") || d.includes("per gacha ball")) return "reliable";
+  if (d.includes("every second") && d.includes("riding wart")) return "reliable"; // Wart Rodeo
+  // Combo action schemes (kills + balls together)
+  if (n === "cage match" || n === "gacha gouging") return "reliable";
+
+  // MODERATE — Win/loss dependent (~50/50 chance)
+  if (n === "victory lap" || (d.includes("winning team") && !d.includes("when"))) return "moderate";
+  if (n === "taking a dive" || d.includes("losing team")) return "moderate";
+  if (n === "touching the wart" && d.includes("closer")) return "moderate";
+
+  // RISKY — Specific win conditions or uncommon events
+  if (d.includes("when team wins by")) return "risky"; // Baiting the Trap, Grabbing Balls, Moki Smash
+  if (d.includes("when winning") || d.includes("when achieving")) return "risky"; // Beat the Buzzer, Final Blow
+  if (d.includes("picking up a loose")) return "risky"; // Litter Collection, Running Interference
+  if (d.includes("eaten by wart") || n === "saccing") return "risky";
+  if (d.includes("eat a moki") || n === "cursed dinner") return "risky";
+  if (d.includes("every second") && d.includes("buff") && !d.includes("wart")) return "risky"; // Flexing
+
+  // HIGH_RISK — All-or-nothing gambles
+  if (d.includes("double total points") && d.includes("0 total points")) return "high_risk";
+  if (n === "enforcing the naughty list" || n === "gacha hoarding") return "high_risk";
+
+  // Default: moderate risk for unrecognized schemes
+  return "moderate";
+}
+
+/**
+ * Get the risk-adjusted multiplier for a scheme, optionally overridden by empirical data.
+ * If empirical data shows a "risky" scheme consistently winning, reduce the penalty.
+ */
+export function getSchemeRiskMultiplier(
+  riskLevel: SchemeRiskLevel,
+  empiricalOverride?: { winRate: number; appearances: number; confidence: number } | null
+): number {
+  const baseMultiplier = RISK_MULTIPLIER[riskLevel];
+
+  // If we have strong empirical data showing this scheme works, override the penalty
+  if (empiricalOverride && empiricalOverride.confidence >= 0.5 && empiricalOverride.appearances >= 5) {
+    // If the scheme's empirical win rate is above average (>50%), boost it
+    // Scale: 50% win rate = no change, 70% = significant boost, 90% = near full value
+    if (empiricalOverride.winRate > 0.5) {
+      const empiricalBoost = Math.min(1.15, baseMultiplier + (empiricalOverride.winRate - 0.5) * 1.5);
+      return Math.max(baseMultiplier, empiricalBoost);
+    }
+    // If empirical data confirms the scheme underperforms, keep or increase penalty
+    if (empiricalOverride.winRate < 0.3) {
+      return Math.min(baseMultiplier, baseMultiplier * 0.8);
+    }
+  }
+
+  return baseMultiplier;
 }
 
 // ─── Champion Scoring ──────────────────────────────────────────────
@@ -296,10 +395,13 @@ function buildStandardLineup(
 
 /**
  * Auto-select the best scheme card for a given lineup.
+ * Applies risk-adjusted scoring: reliable/guaranteed schemes get full or boosted value,
+ * risky schemes get penalized unless empirical data shows they consistently win.
  */
 export function selectBestScheme(
   champions: ChampionCard[],
-  availableSchemes: SchemeCardData[]
+  availableSchemes: SchemeCardData[],
+  schemeEmpirical?: Map<string, { winRate: number; appearances: number; confidence: number }>
 ): SchemeCardData | null {
   if (availableSchemes.length === 0) return null;
 
@@ -307,12 +409,22 @@ export function selectBestScheme(
   let bestScore = -Infinity;
 
   for (const scheme of availableSchemes) {
-    let totalScore = 0;
+    // Calculate raw scheme score from champion contributions
+    let rawScore = 0;
     for (const champ of champions) {
-      totalScore += scoreChampion(champ, scheme, champions);
+      rawScore += scoreChampion(champ, scheme, champions);
     }
-    if (totalScore > bestScore) {
-      bestScore = totalScore;
+
+    // Apply risk-adjusted multiplier
+    const empiricalData = schemeEmpirical?.get(scheme.name.toLowerCase());
+    const riskMultiplier = getSchemeRiskMultiplier(
+      scheme.riskLevel,
+      empiricalData ?? null
+    );
+    const adjustedScore = rawScore * riskMultiplier;
+
+    if (adjustedScore > bestScore) {
+      bestScore = adjustedScore;
       bestScheme = scheme;
     }
   }
@@ -331,6 +443,7 @@ export interface OptimizerInput {
   entryFee: number; // Gems per entry
   dailyBudget: number; // Remaining daily gem budget
   performanceStats?: Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number }>;
+  schemeEmpirical?: Map<string, { winRate: number; appearances: number; confidence: number }>;
 }
 
 /**
@@ -346,6 +459,7 @@ export function optimizeLineups(input: OptimizerInput): OptimizerResult {
     entryFee,
     dailyBudget,
     performanceStats,
+    schemeEmpirical,
   } = input;
 
   const warnings: string[] = [];
@@ -423,7 +537,8 @@ export function optimizeLineups(input: OptimizerInput): OptimizerResult {
     );
     const bestScheme = selectBestScheme(
       slots.map((s) => s.champion),
-      availableSchemeData.length > 0 ? availableSchemeData : allSchemes
+      availableSchemeData.length > 0 ? availableSchemeData : allSchemes,
+      schemeEmpirical
     );
 
     if (bestScheme && availableSchemeData.find((s) => s.tokenId === bestScheme.tokenId)) {

@@ -111,16 +111,44 @@ export const lineupRouter = router({
       const spentToday = Number(spentResult?.total ?? 0);
       const remainingBudget = dailyBudget - spentToday;
 
-      // Load scheme data with image URLs from wallet sync
-      const schemeCards: SchemeCardData[] = available.schemes.map((s) => ({
-        tokenId: s.tokenId,
-        name: s.name ?? "Unknown Scheme",
-        description: "",
-        hasTraitFilter: false,
-        qualifyingChampionIds: [],
-        category: "other" as const,
-        imageUrl: s.imageUrl ?? null,
-      }));
+      // Load game-data.json for scheme descriptions and trait info
+      const fs = await import("fs");
+      const path = await import("path");
+      const gameDataPath = path.resolve(import.meta.dirname ?? process.cwd(), "../client/public/game-data.json");
+      let gameDataSchemes: Array<{ name: string; description: string; effect?: string }> = [];
+      try {
+        const raw = fs.readFileSync(gameDataPath, "utf-8");
+        const gameData = JSON.parse(raw);
+        gameDataSchemes = gameData.schemes ?? [];
+      } catch (err) {
+        console.error("[Optimizer] Failed to load game-data.json for schemes:", err);
+      }
+
+      // Build scheme lookup by name (case-insensitive)
+      const schemeLookup = new Map<string, { description: string }>();
+      for (const gs of gameDataSchemes) {
+        schemeLookup.set(gs.name.toLowerCase(), {
+          description: gs.description ?? gs.effect ?? "",
+        });
+      }
+
+      // Load scheme data with risk classification
+      const { classifySchemeRisk, categorizeScheme: catScheme } = await import("./lineupOptimizer");
+      const schemeCards: SchemeCardData[] = available.schemes.map((s) => {
+        const sName = s.name ?? "Unknown Scheme";
+        const lookup = schemeLookup.get(sName.toLowerCase());
+        const desc = lookup?.description ?? "";
+        return {
+          tokenId: s.tokenId,
+          name: sName,
+          description: desc,
+          hasTraitFilter: false,
+          qualifyingChampionIds: [],
+          category: catScheme(desc),
+          riskLevel: classifySchemeRisk(sName, desc),
+          imageUrl: s.imageUrl ?? null,
+        };
+      });
 
       // Load champion performance stats from database (class-based model)
       let statsRows = await db.select().from(championStats);
@@ -201,6 +229,25 @@ export const lineupRouter = router({
         format: contest.format,
       };
 
+      // Load empirical scheme performance data for risk override
+      let schemeEmpirical = new Map<string, { winRate: number; appearances: number; confidence: number }>();
+      try {
+        const { aggregateSchemePerformance } = await import("./empiricalStats");
+        const schemePerf = await aggregateSchemePerformance(0.5);
+        for (const sp of schemePerf.schemes) {
+          schemeEmpirical.set(sp.schemeName.toLowerCase(), {
+            winRate: sp.winRate,
+            appearances: sp.appearances,
+            confidence: sp.confidence,
+          });
+        }
+        if (schemePerf.schemes.length > 0) {
+          console.log(`[Optimizer] Loaded empirical scheme data: ${schemePerf.schemes.length} schemes`);
+        }
+      } catch (err) {
+        console.error("[Optimizer] Failed to load empirical scheme data:", err);
+      }
+
       const result = optimizeLineups({
         ownedMokis: userCardsToChampionCards(available.mokis),
         ownedSchemes: schemeCards,
@@ -210,6 +257,7 @@ export const lineupRouter = router({
         entryFee: contest.entryFee ?? 0,
         dailyBudget: remainingBudget,
         performanceStats: performanceStats.size > 0 ? performanceStats : undefined,
+        schemeEmpirical,
       });
 
       return {

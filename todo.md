@@ -162,3 +162,10 @@
 - [x] Show data confidence indicators in Lineup Builder (model-based vs empirical)
 - [x] Auto-scroll to Build box and add yellow outline highlight after contest selection in Lineup Builder
 - [x] Auto-scroll to first generated lineup after clicking Optimize (no highlight needed)
+
+## Scheme Card Strategy: Reliable vs Risky
+- [x] Categorize all scheme cards as reliable (trait/kills/balls/wart) vs risky (RNG-dependent)
+- [x] Penalize risky scheme cards in optimizer scoring
+- [x] Boost reliable scheme cards (trait-based, kills, ball deliveries, wart riding)
+- [x] Build scheme performance rankings from winning lineup data
+- [x] Override risky penalty when empirical winning data shows consistent success with a risky scheme
