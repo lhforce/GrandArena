@@ -120,3 +120,6 @@
 - [x] Telegram Alerts page: stacking cards, responsive grids
 - [x] Settings page: full-width inputs, responsive text
 - [x] Home/Scheme Card tool: responsive WalletScreen, SchemesScreen, ChampionsScreen grids
+
+## Bug Fixes Round 5
+- [x] Lineup Builder results should show actual card artwork images instead of generic shield icons

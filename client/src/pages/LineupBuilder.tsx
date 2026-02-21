@@ -1,8 +1,9 @@
 /**
- * Lineup Builder — Interactive contest optimizer. Mobile responsive.
+ * Lineup Builder — Interactive contest optimizer with card artwork display.
+ * Mobile responsive.
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -18,12 +19,35 @@ import {
 import { toast } from "sonner";
 import {
   Loader2, Swords, Trophy, Gem, AlertTriangle, ChevronRight,
-  Crown, Shield, Sparkles, Zap, Lock, Save,
+  Crown, Sparkles, Zap, Lock, Save,
 } from "lucide-react";
 
+// ─── Types for game data ────────────────────────────────────────────
+interface GameChampion {
+  name: string;
+  image: string;
+  tokenId: string;
+  championTokenId: string;
+  attributes: { Rarity?: string[]; "Card Type"?: string[] };
+}
+interface GameScheme {
+  name: string;
+  image: string;
+  tokenId: string;
+}
+interface GameData {
+  champions: GameChampion[];
+  schemes: GameScheme[];
+}
+
+// ─── Constants ──────────────────────────────────────────────────────
 const RARITY_COLORS: Record<string, string> = {
   Basic: "text-rarity-basic", Common: "text-rarity-basic",
   Rare: "text-rarity-rare", Epic: "text-rarity-epic", Legendary: "text-rarity-legendary",
+};
+const RARITY_BORDER: Record<string, string> = {
+  Basic: "border-rarity-basic/40", Common: "border-rarity-basic/40",
+  Rare: "border-rarity-rare/40", Epic: "border-rarity-epic/40", Legendary: "border-rarity-legendary/40",
 };
 const RARITY_BG: Record<string, string> = {
   Basic: "bg-rarity-basic", Common: "bg-rarity-basic",
@@ -38,6 +62,62 @@ export default function LineupBuilder() {
   const [selectedContestId, setSelectedContestId] = useState<number | null>(null);
   const [numEntries, setNumEntries] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>("LIVE");
+  const [gameData, setGameData] = useState<GameData | null>(null);
+
+  // Load game data for card images
+  useEffect(() => {
+    fetch("/game-data.json")
+      .then((r) => r.json())
+      .then((data: GameData) => setGameData(data))
+      .catch((err) => console.error("Failed to load game data:", err));
+  }, []);
+
+  // Build lookup maps for fast image resolution
+  const championImageMap = useMemo(() => {
+    if (!gameData) return new Map<string, { image: string; name: string }>();
+    const map = new Map<string, { image: string; name: string }>();
+    for (const c of gameData.champions) {
+      // Index by name (case-insensitive) and by tokenId and championTokenId
+      map.set(c.name.toLowerCase(), { image: c.image, name: c.name });
+      map.set(`token:${c.tokenId}`, { image: c.image, name: c.name });
+      map.set(`champion:${c.championTokenId}`, { image: c.image, name: c.name });
+    }
+    return map;
+  }, [gameData]);
+
+  const schemeImageMap = useMemo(() => {
+    if (!gameData) return new Map<string, { image: string; name: string }>();
+    const map = new Map<string, { image: string; name: string }>();
+    for (const s of gameData.schemes) {
+      map.set(s.name.toLowerCase(), { image: s.image, name: s.name });
+      map.set(`token:${s.tokenId}`, { image: s.image, name: s.name });
+    }
+    return map;
+  }, [gameData]);
+
+  const getChampionImage = (champion: { name: string; tokenId?: string; championTokenId?: string | null }) => {
+    const byName = championImageMap.get(champion.name.toLowerCase());
+    if (byName) return byName.image;
+    if (champion.tokenId) {
+      const byToken = championImageMap.get(`token:${champion.tokenId}`);
+      if (byToken) return byToken.image;
+    }
+    if (champion.championTokenId) {
+      const byChampion = championImageMap.get(`champion:${champion.championTokenId}`);
+      if (byChampion) return byChampion.image;
+    }
+    return null;
+  };
+
+  const getSchemeImage = (scheme: { name: string; tokenId?: string | null }) => {
+    const byName = schemeImageMap.get(scheme.name.toLowerCase());
+    if (byName) return byName.image;
+    if (scheme.tokenId) {
+      const byToken = schemeImageMap.get(`token:${scheme.tokenId}`);
+      if (byToken) return byToken.image;
+    }
+    return null;
+  };
 
   const contestsQuery = trpc.contests.list.useQuery({ status: statusFilter, limit: 50, offset: 0 });
   const budgetQuery = trpc.lineup.gemBudget.useQuery(undefined, { enabled: isAuthenticated });
@@ -242,7 +322,7 @@ export default function LineupBuilder() {
         </Card>
       )}
 
-      {/* Results */}
+      {/* Results with Card Artwork */}
       {optimizeMutation.data && (
         <div className="space-y-4">
           {optimizeMutation.data.warnings.length > 0 && (
@@ -251,7 +331,7 @@ export default function LineupBuilder() {
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
                   <div className="space-y-1">
-                    {optimizeMutation.data.warnings.map((w, i) => (
+                    {optimizeMutation.data.warnings.map((w: string, i: number) => (
                       <p key={i} className="text-xs sm:text-sm text-destructive">{w}</p>
                     ))}
                   </div>
@@ -266,7 +346,7 @@ export default function LineupBuilder() {
             <span>Budget left: <strong className="text-teal">{optimizeMutation.data.remainingBudget.toLocaleString()}</strong></span>
           </div>
 
-          {optimizeMutation.data.lineups.map((lineup, idx) => (
+          {optimizeMutation.data.lineups.map((lineup: any, idx: number) => (
             <Card key={idx} className="glass-card border-gold/20">
               <CardHeader className="pb-2 px-3 sm:px-6">
                 <div className="flex items-center justify-between gap-2">
@@ -286,26 +366,74 @@ export default function LineupBuilder() {
               </CardHeader>
               <CardContent className="px-3 sm:px-6">
                 <div className="grid grid-cols-5 gap-1.5 sm:gap-3">
-                  {lineup.champions.map((slot, ci) => (
-                    <div key={ci} className="p-1.5 sm:p-3 rounded-lg border border-border bg-card/50 text-center">
-                      <Shield className={`w-4 h-4 sm:w-6 sm:h-6 mx-auto mb-1 ${RARITY_COLORS[slot.champion.rarity] ?? "text-muted-foreground"}`} />
-                      <div className="text-[9px] sm:text-xs font-medium truncate" title={slot.champion.name}>
-                        {slot.champion.name}
+                  {/* Champion Cards with Artwork */}
+                  {lineup.champions.map((slot: any, ci: number) => {
+                    const imgUrl = getChampionImage(slot.champion);
+                    return (
+                      <div key={ci} className={`rounded-lg border ${RARITY_BORDER[slot.champion.rarity] ?? "border-border"} bg-card/50 overflow-hidden text-center`}>
+                        {/* Card Image */}
+                        <div className="aspect-[3/4] relative bg-background/30">
+                          {imgUrl ? (
+                            <img
+                              src={imgUrl}
+                              alt={slot.champion.name}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <Swords className={`w-6 h-6 sm:w-8 sm:h-8 ${RARITY_COLORS[slot.champion.rarity] ?? "text-muted-foreground"}`} />
+                            </div>
+                          )}
+                          {/* Score overlay */}
+                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-1">
+                            <div className="text-[9px] sm:text-[10px] text-gold font-bold">
+                              {slot.score.toLocaleString()} pts
+                            </div>
+                          </div>
+                        </div>
+                        {/* Card Info */}
+                        <div className="p-1 sm:p-1.5">
+                          <div className="text-[8px] sm:text-[10px] font-medium truncate" title={slot.champion.name}>
+                            {slot.champion.name}
+                          </div>
+                          <Badge variant="outline" className={`text-[7px] sm:text-[9px] h-3.5 sm:h-4 mt-0.5 ${RARITY_COLORS[slot.champion.rarity] ?? ""}`}>
+                            {slot.champion.rarity}
+                          </Badge>
+                        </div>
                       </div>
-                      <Badge variant="outline" className={`text-[8px] sm:text-[10px] mt-0.5 ${RARITY_COLORS[slot.champion.rarity] ?? ""}`}>
-                        {slot.champion.rarity}
-                      </Badge>
-                      <div className="text-[9px] sm:text-xs text-muted-foreground mt-0.5">
-                        {slot.score.toLocaleString()}
+                    );
+                  })}
+
+                  {/* Scheme Card with Artwork */}
+                  <div className="rounded-lg border border-teal/30 bg-teal/5 overflow-hidden text-center">
+                    <div className="aspect-[3/4] relative bg-background/30">
+                      {lineup.scheme ? (() => {
+                        const schemeImg = getSchemeImage(lineup.scheme);
+                        return schemeImg ? (
+                          <img
+                            src={schemeImg}
+                            alt={lineup.scheme.name}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-teal" />
+                          </div>
+                        );
+                      })() : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-teal/40" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-1 sm:p-1.5">
+                      <div className="text-[8px] sm:text-[10px] font-medium truncate" title={lineup.scheme?.name ?? "No Scheme"}>
+                        {lineup.scheme?.name ?? "None"}
                       </div>
+                      <Badge variant="outline" className="text-[7px] sm:text-[9px] h-3.5 sm:h-4 mt-0.5 text-teal">Scheme</Badge>
                     </div>
-                  ))}
-                  <div className="p-1.5 sm:p-3 rounded-lg border border-teal/30 bg-teal/5 text-center">
-                    <Sparkles className="w-4 h-4 sm:w-6 sm:h-6 mx-auto mb-1 text-teal" />
-                    <div className="text-[9px] sm:text-xs font-medium truncate" title={lineup.scheme?.name ?? "No Scheme"}>
-                      {lineup.scheme?.name ?? "None"}
-                    </div>
-                    <Badge variant="outline" className="text-[8px] sm:text-[10px] mt-0.5 text-teal">Scheme</Badge>
                   </div>
                 </div>
               </CardContent>
