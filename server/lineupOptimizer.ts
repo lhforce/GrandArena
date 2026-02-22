@@ -219,6 +219,12 @@ export function getSchemeRiskMultiplier(
 
 /**
  * Score a champion for a given scheme, considering rarity multiplier and performance stats.
+ * 
+ * When a Scheme is provided, scoring is SCHEME-DOMINANT: the Scheme's preferred actions
+ * are weighted heavily so that MOKIs who excel at those actions rank highest.
+ * A small base score (win rate + general versatility) acts as a tiebreaker.
+ * 
+ * When no Scheme is provided, scoring uses balanced V4 weights across all actions.
  */
 export function scoreChampion(
   champion: ChampionCard,
@@ -226,50 +232,80 @@ export function scoreChampion(
   allChampionsInLineup?: ChampionCard[]
 ): number {
   const multiplier = RARITY_MULTIPLIER[champion.rarity] ?? 1.0;
-  
-  // Base score from performance stats (weighted by V4 scoring)
-  const killScore = (champion.avgKills ?? 2) * 85 * multiplier;
-  const ballScore = (champion.avgBalls ?? 1) * 40 * multiplier;
-  const wartScore = (champion.avgWartDistance ?? 50) * 0.5 * multiplier; // Approximate
-  const winBonus = (champion.winRate ?? 0.3) * 200 * multiplier;
-  
-  let baseScore = killScore + ballScore + wartScore + winBonus;
 
-  // Scheme bonus
-  if (scheme) {
-    const qualifies = !scheme.hasTraitFilter || 
-      scheme.qualifyingChampionIds.includes(champion.championTokenId ?? "");
-    
-    if (qualifies) {
-      const cat = scheme.category;
-      switch (cat) {
-        case "kills":
-          // Kills-focused schemes boost kill-heavy champions
-          baseScore += (champion.avgKills ?? 2) * 85 * 0.5 * multiplier;
-          break;
-        case "balls":
-          baseScore += (champion.avgBalls ?? 1) * 40 * 0.5 * multiplier;
-          break;
-        case "wart":
-          baseScore += (champion.avgWartDistance ?? 50) * 0.3 * multiplier;
-          break;
-        case "win":
-          baseScore += (champion.winRate ?? 0.3) * 200 * 0.5 * multiplier;
-          break;
-        case "trait":
-          // Trait schemes give flat bonus per qualifying champion
-          baseScore += 25 * multiplier;
-          break;
-        case "combo":
-          baseScore += ((champion.avgKills ?? 2) * 35 + (champion.avgBalls ?? 1) * 10) * multiplier;
-          break;
-        default:
-          baseScore += 15 * multiplier;
-      }
-    }
+  const avgKills = champion.avgKills ?? 2;
+  const avgBalls = champion.avgBalls ?? 1;
+  const avgWart = champion.avgWartDistance ?? 50;
+  const winRate = champion.winRate ?? 0.3;
+
+  // No scheme: balanced V4 scoring (original behavior)
+  if (!scheme) {
+    const killScore = avgKills * 85 * multiplier;
+    const ballScore = avgBalls * 40 * multiplier;
+    const wartScore = avgWart * 0.5 * multiplier;
+    const winBonus = winRate * 200 * multiplier;
+    return Math.round(killScore + ballScore + wartScore + winBonus);
   }
 
-  return Math.round(baseScore);
+  // With scheme: SCHEME-DOMINANT scoring
+  // Small tiebreaker from win rate and general versatility
+  const tiebreaker = (winRate * 100 + avgKills * 5 + avgBalls * 3 + avgWart * 0.05) * multiplier;
+
+  const qualifies = !scheme.hasTraitFilter ||
+    scheme.qualifyingChampionIds.includes(champion.championTokenId ?? "");
+
+  // Non-qualifying champions for trait schemes get only the tiebreaker
+  if (!qualifies) {
+    return Math.round(tiebreaker);
+  }
+
+  const cat = scheme.category;
+  let schemeScore = 0;
+
+  switch (cat) {
+    case "kills":
+      // Kill schemes: kills are the dominant scoring factor
+      // V4: each kill = 85 base pts, scheme multiplies this
+      schemeScore = avgKills * 200 * multiplier;
+      break;
+    case "balls":
+      // Ball schemes: ball deliveries are the dominant scoring factor
+      // V4: each ball = 40 base pts, scheme multiplies this
+      schemeScore = avgBalls * 150 * multiplier;
+      break;
+    case "wart":
+      // Wart schemes: wart distance is the dominant scoring factor
+      schemeScore = avgWart * 2.0 * multiplier;
+      break;
+    case "win":
+      // Win schemes: win rate is the dominant scoring factor
+      schemeScore = winRate * 500 * multiplier;
+      break;
+    case "trait":
+      // Trait schemes: flat bonus per qualifying champion (guaranteed points)
+      // Big bonus to ensure qualifying MOKIs are strongly preferred
+      schemeScore = 250 * multiplier;
+      break;
+    case "combo":
+      // Combo schemes (e.g., Cage Match: +35/kill, +10/ball)
+      // Kills are weighted 3.5x more than balls per the scheme's own point values
+      // Use aggressive kill weighting so killers clearly outrank pure ball carriers
+      schemeScore = (avgKills * 250 + avgBalls * 25) * multiplier;
+      break;
+    case "rarity":
+      // Rarity schemes: bonus for diverse rarities (handled at lineup level)
+      schemeScore = 50 * multiplier;
+      break;
+    case "conditional":
+      // Conditional schemes: moderate bonus, depends on game events
+      schemeScore = (avgKills * 80 + avgBalls * 30 + avgWart * 0.3) * multiplier;
+      break;
+    default:
+      schemeScore = (avgKills * 80 + avgBalls * 30 + avgWart * 0.3) * multiplier;
+      break;
+  }
+
+  return Math.round(schemeScore + tiebreaker);
 }
 
 // ─── Rarity Filter ─────────────────────────────────────────────────
@@ -448,6 +484,14 @@ export interface OptimizerInput {
 
 /**
  * Build optimal lineups for a contest.
+ * 
+ * Co-optimization strategy:
+ * For each entry, try EVERY available Scheme card, build the best 4-MOKI lineup
+ * specifically optimized for that Scheme's scoring, then pick the Scheme+MOKI combo
+ * with the highest risk-adjusted total score.
+ * 
+ * This ensures kill-focused Schemes get kill-heavy MOKIs, ball-focused Schemes get
+ * ball carriers, etc. — rather than picking MOKIs first and then finding a Scheme.
  */
 export function optimizeLineups(input: OptimizerInput): OptimizerResult {
   const {
@@ -512,51 +556,81 @@ export function optimizeLineups(input: OptimizerInput): OptimizerResult {
   const usedSchemeTokenIds = new Set<string>();
 
   for (let entry = 1; entry <= actualEntries; entry++) {
-    // Build lineup based on contest type
-    let slots: LineupSlot[] | null = null;
+    // Determine which schemes to evaluate
+    const availableOwnedSchemes = ownedSchemes.filter(
+      (s) => !usedSchemeTokenIds.has(s.tokenId)
+    );
+    const schemeCandidates = availableOwnedSchemes.length > 0
+      ? availableOwnedSchemes
+      : allSchemes;
 
-    if (contestRules.isOneOfEach) {
-      slots = buildOneOfEachLineup(eligible, null, usedTokenIds);
-    } else {
-      slots = buildStandardLineup(eligible, null, usedTokenIds);
+    // Also include a "no scheme" baseline (null) so we can compare
+    const schemesToTry: (SchemeCardData | null)[] = [
+      null,
+      ...schemeCandidates,
+    ];
+
+    let bestComboScore = -Infinity;
+    let bestComboSlots: LineupSlot[] | null = null;
+    let bestComboScheme: SchemeCardData | null = null;
+
+    // Co-optimization: try every Scheme, build the best lineup for each,
+    // pick the combo with the highest risk-adjusted total score
+    for (const scheme of schemesToTry) {
+      // Build the best 4-MOKI lineup specifically for this Scheme
+      let slots: LineupSlot[] | null = null;
+
+      if (contestRules.isOneOfEach) {
+        slots = buildOneOfEachLineup(eligible, scheme, usedTokenIds);
+      } else {
+        slots = buildStandardLineup(eligible, scheme, usedTokenIds);
+      }
+
+      if (!slots || slots.length < 4) continue;
+
+      // Calculate total score for this Scheme+MOKI combo
+      const rawTotal = slots.reduce((sum, s) => sum + s.score, 0);
+
+      // Apply risk-adjusted multiplier for the Scheme
+      let adjustedTotal = rawTotal;
+      if (scheme) {
+        const empiricalData = schemeEmpirical?.get(scheme.name.toLowerCase());
+        const riskMultiplier = getSchemeRiskMultiplier(
+          scheme.riskLevel,
+          empiricalData ?? null
+        );
+        adjustedTotal = rawTotal * riskMultiplier;
+      }
+
+      if (adjustedTotal > bestComboScore) {
+        bestComboScore = adjustedTotal;
+        bestComboSlots = slots;
+        bestComboScheme = scheme;
+      }
     }
 
-    if (!slots || slots.length < 4) {
+    if (!bestComboSlots || bestComboSlots.length < 4) {
       warnings.push(`Not enough unique cards for entry #${entry}.`);
       break;
     }
 
     // Mark cards as used
-    for (const slot of slots) {
+    for (const slot of bestComboSlots) {
       usedTokenIds.add(slot.champion.tokenId);
     }
 
-    // Select best scheme
-    const availableSchemeData = ownedSchemes.filter(
-      (s) => !usedSchemeTokenIds.has(s.tokenId)
-    );
-    const bestScheme = selectBestScheme(
-      slots.map((s) => s.champion),
-      availableSchemeData.length > 0 ? availableSchemeData : allSchemes,
-      schemeEmpirical
-    );
-
-    if (bestScheme && availableSchemeData.find((s) => s.tokenId === bestScheme.tokenId)) {
-      usedSchemeTokenIds.add(bestScheme.tokenId);
+    // Mark scheme as used if it's an owned scheme
+    if (bestComboScheme && availableOwnedSchemes.find((s) => s.tokenId === bestComboScheme!.tokenId)) {
+      usedSchemeTokenIds.add(bestComboScheme.tokenId);
     }
 
-    // Re-score with the selected scheme
-    const rescoredSlots = slots.map((slot) => ({
-      ...slot,
-      score: scoreChampion(slot.champion, bestScheme),
-    }));
-
-    const predictedScore = rescoredSlots.reduce((sum, s) => sum + s.score, 0);
+    // Final scores are already computed with the correct Scheme
+    const predictedScore = bestComboSlots.reduce((sum, s) => sum + s.score, 0);
 
     lineups.push({
-      champions: rescoredSlots,
-      scheme: bestScheme,
-      schemeTokenId: bestScheme?.tokenId ?? null,
+      champions: bestComboSlots,
+      scheme: bestComboScheme,
+      schemeTokenId: bestComboScheme?.tokenId ?? null,
       predictedScore,
       entryNumber: entry,
       usesOwnedCards: true,

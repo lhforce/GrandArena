@@ -33,6 +33,14 @@ import {
   loadGameDataLookup,
   getUserBenchChampions,
 } from "./swapAdvisor";
+import {
+  analyzeContestPrep,
+  getUserMokisForPrep,
+  loadSchemeData,
+} from "./contestPrep";
+
+// In-memory store for bookmarklet sessions
+const bookmarkletSessions = new Map<string, { data: any; createdAt: number }>();
 
 export const matchupRouter = router({
   /**
@@ -522,6 +530,123 @@ export const matchupRouter = router({
         contestName,
         entryNumber: lineup.entryNumber,
       };
+    }),
+
+  // ─── Contest Prep (Proactive Opponent Scouting) ────────────────────
+
+  /**
+   * Contest Prep: Given opponent matchups (4 slots × 5 opponents each),
+   * find the optimal MOKIs from the user's collection and best Scheme card.
+   */
+  contestPrep: protectedProcedure
+    .input(
+      z.object({
+        slots: z.array(
+          z.object({
+            slotIndex: z.number(),
+            opponentIds: z.array(z.number()),
+            opponentNames: z.array(z.string()),
+          })
+        ).min(1).max(4),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const gameData = await loadGameDataLookup();
+      const schemeData = await loadSchemeData();
+      const userMokis = await getUserMokisForPrep(ctx.user.id);
+
+      if (userMokis.length === 0) {
+        throw new Error(
+          "No MOKIs found in your collection. Please sync your cards first in My Cards."
+        );
+      }
+
+      const result = await analyzeContestPrep(
+        input.slots,
+        userMokis,
+        gameData,
+        schemeData
+      );
+
+      return result;
+    }),
+
+  /**
+   * Receive matchup data from the bookmarklet.
+   * Stores it temporarily and returns a session token for the UI to fetch.
+   */
+  bookmarkletIngest: publicProcedure
+    .input(
+      z.object({
+        contestId: z.string().optional(),
+        entryId: z.string().optional(),
+        contestName: z.string().optional(),
+        slots: z.array(
+          z.object({
+            slotIndex: z.number(),
+            yourMoki: z.object({
+              name: z.string(),
+              tokenId: z.string().optional(),
+            }),
+            opponents: z.array(
+              z.object({
+                name: z.string(),
+                tokenId: z.string().optional(),
+              })
+            ),
+          })
+        ),
+        timestamp: z.number(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      // Store in memory with a session key
+      const sessionKey = `bm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      bookmarkletSessions.set(sessionKey, {
+        data: input,
+        createdAt: Date.now(),
+      });
+
+      // Clean up old sessions (>30 min)
+      const cutoff = Date.now() - 30 * 60 * 1000;
+      Array.from(bookmarkletSessions.entries()).forEach(([key, val]) => {
+        if (val.createdAt < cutoff) bookmarkletSessions.delete(key);
+      });
+
+      return { sessionKey, received: true };
+    }),
+
+  /**
+   * Fetch bookmarklet data by session key (polled by the UI).
+   */
+  bookmarkletFetch: publicProcedure
+    .input(z.object({ sessionKey: z.string() }))
+    .query(async ({ input }) => {
+      const session = bookmarkletSessions.get(input.sessionKey);
+      if (!session) return { found: false, data: null };
+      return { found: true, data: session.data };
+    }),
+
+  /**
+   * Get the latest bookmarklet session (for auto-detection).
+   */
+  bookmarkletLatest: publicProcedure
+    .query(async () => {
+      // Find the most recent session
+      let latestEntry: { key: string; data: any; createdAt: number } | null = null;
+      const entries = Array.from(bookmarkletSessions.entries());
+      for (let i = 0; i < entries.length; i++) {
+        const [key, val] = entries[i];
+        if (!latestEntry || val.createdAt > latestEntry.createdAt) {
+          latestEntry = { key, data: val.data, createdAt: val.createdAt };
+        }
+      }
+      if (!latestEntry) return { found: false as const, data: null, sessionKey: null };
+      // Only return if less than 5 minutes old
+      if (Date.now() - latestEntry.createdAt > 5 * 60 * 1000) {
+        return { found: false as const, data: null, sessionKey: null };
+      }
+      return { found: true as const, data: latestEntry.data, sessionKey: latestEntry.key };
     }),
 
   // ─── Cron Job Management ──────────────────────────────────────────

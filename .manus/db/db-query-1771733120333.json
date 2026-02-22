@@ -1,0 +1,76 @@
+{
+  "query": "SELECT \n  championTokenId,\n  championName,\n  COUNT(*) AS totalMatches,\n  ROUND(AVG(kills), 2) AS avgKills,\n  ROUND(AVG(balls), 2) AS avgBalls,\n  ROUND(AVG(wartDistance), 2) AS avgWartDistance,\n  ROUND(SUM(CASE WHEN isWinner = 1 THEN 1 ELSE 0 END) / COUNT(*) * 100, 1) AS winRatePct,\n  SUM(kills) AS totalKills,\n  SUM(balls) AS totalBalls\nFROM match_player_stats\nWHERE championTokenId IN (4193, 2575, 8579, 4011)\nGROUP BY championTokenId, championName\nORDER BY avgKills DESC;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute SELECT \n  championTokenId,\n  championName,\n  COUNT(*) AS totalMatches,\n  ROUND(AVG(kills), 2) AS avgKills,\n  ROUND(AVG(balls), 2) AS avgBalls,\n  ROUND(AVG(wartDistance), 2) AS avgWartDistance,\n  ROUND(SUM(CASE WHEN isWinner = 1 THEN 1 ELSE 0 END) / COUNT(*) * 100, 1) AS winRatePct,\n  SUM(kills) AS totalKills,\n  SUM(balls) AS totalBalls\nFROM match_player_stats\nWHERE championTokenId IN (4193, 2575, 8579, 4011)\nGROUP BY championTokenId, championName\nORDER BY avgKills DESC;",
+  "rows": [
+    {
+      "championTokenId": "4011",
+      "championName": "Moki #4011",
+      "totalMatches": "60",
+      "avgKills": "1.45",
+      "avgBalls": "0.45",
+      "avgWartDistance": "134.09",
+      "winRatePct": "58.3",
+      "totalKills": "87",
+      "totalBalls": "27"
+    },
+    {
+      "championTokenId": "4011",
+      "championName": "Shadowstorm",
+      "totalMatches": "41",
+      "avgKills": "1.34",
+      "avgBalls": "0.07",
+      "avgWartDistance": "184.44",
+      "winRatePct": "65.9",
+      "totalKills": "55",
+      "totalBalls": "3"
+    },
+    {
+      "championTokenId": "2575",
+      "championName": "Moki #2575",
+      "totalMatches": "59",
+      "avgKills": "1.03",
+      "avgBalls": "0.00",
+      "avgWartDistance": "251.67",
+      "winRatePct": "50.8",
+      "totalKills": "61",
+      "totalBalls": "0"
+    },
+    {
+      "championTokenId": "2575",
+      "championName": "Peeltergeist",
+      "totalMatches": "41",
+      "avgKills": "0.71",
+      "avgBalls": "0.07",
+      "avgWartDistance": "242.58",
+      "winRatePct": "43.9",
+      "totalKills": "29",
+      "totalBalls": "3"
+    },
+    {
+      "championTokenId": "8579",
+      "championName": "Tamanuki",
+      "totalMatches": "100",
+      "avgKills": "0.03",
+      "avgBalls": "5.08",
+      "avgWartDistance": "0.25",
+      "winRatePct": "44.0",
+      "totalKills": "3",
+      "totalBalls": "508"
+    },
+    {
+      "championTokenId": "4193",
+      "championName": "MahoShojo",
+      "totalMatches": "101",
+      "avgKills": "0.00",
+      "avgBalls": "5.06",
+      "avgWartDistance": "0.62",
+      "winRatePct": "50.5",
+      "totalKills": "0",
+      "totalBalls": "511"
+    }
+  ],
+  "messages": [],
+  "stdout": "championTokenId\tchampionName\ttotalMatches\tavgKills\tavgBalls\tavgWartDistance\twinRatePct\ttotalKills\ttotalBalls\n4011\tMoki #4011\t60\t1.45\t0.45\t134.09\t58.3\t87\t27\n4011\tShadowstorm\t41\t1.34\t0.07\t184.44\t65.9\t55\t3\n2575\tMoki #2575\t59\t1.03\t0.00\t251.67\t50.8\t61\t0\n2575\tPeeltergeist\t41\t0.71\t0.07\t242.58\t43.9\t29\t3\n8579\tTamanuki\t100\t0.03\t5.08\t0.25\t44.0\t3\t508\n4193\tMahoShojo\t101\t0.00\t5.06\t0.62\t50.5\t0\t511\n",
+  "stderr": "",
+  "execution_time_ms": 103
+}

@@ -229,3 +229,48 @@
 - [x] Auto-populate from contest data if available
 - [x] Swap recommendation: "For slot X, swap A for B — improves avg win rate across 5 opponents by Y%"
 - [x] Write tests for new 4×5 swap logic
+
+## Bug Fixes Round 10
+- [x] Fix duplicate AI identification jobs running concurrently — add concurrency guard
+- [x] Fix H2H match scraper stopping after 10-15 seconds instead of completing all 179 champions
+
+## Auto-Detect Opponents from GA Fantasy API
+- [ ] Investigate GA Fantasy contest API for matchup/opponent data (which MOKIs face which)
+- [ ] Build opponent auto-detection from GA contest API (fetch round matchups)
+- [ ] Update Swap Advisor to auto-populate all 20 matchups (4 MOKIs × 5 opponents) from API
+- [ ] Eliminate need for manual opponent entry entirely
+
+## Bookmarklet Matchup Extraction
+- [ ] Analyze GA Fantasy contest entry page DOM structure for matchup data
+- [ ] Build server-side API endpoint to receive bookmarklet matchup data
+- [ ] Create bookmarklet JS that extracts 20 matchups (4 MOKIs × 5 opponents) from GA Fantasy DOM
+- [ ] Add Bookmarklet Setup section to Swap Advisor UI with drag-to-install instructions
+- [ ] Auto-populate Swap Advisor when bookmarklet sends matchup data
+- [ ] Write tests for bookmarklet API endpoint and matchup processing
+
+## Scheme-Aware Swap Advisor
+- [ ] Analyze Scheme card trait requirements (class, element, etc.) for swap compatibility
+- [ ] Add Scheme card context to swap advisor engine (which Scheme is active for the lineup)
+- [ ] Check if replacement MOKI satisfies active Scheme card trait requirements
+- [ ] Flag swaps that break Scheme card abilities with clear warnings
+- [ ] Show tradeoff: "Better matchup but loses Scheme bonus" vs "Keeps Scheme bonus and improves matchup"
+- [ ] Prefer swaps that maintain Scheme compatibility; warn clearly about ones that don't
+- [ ] Update Swap Advisor UI to display Scheme compatibility status on each recommendation
+- [ ] Write tests for Scheme-aware swap logic
+
+## Contest Prep Workflow (Proactive Opponent Scouting)
+- [ ] Build Contest Prep engine: analyze opponents per slot, rank user's MOKIs by H2H advantage
+- [ ] Optimal MOKI selection: for each of 4 slots, find best MOKI from user's collection vs that slot's 5 opponents
+- [ ] Scheme card matching: find best Scheme card whose trait requirements match the selected 4 MOKIs
+- [ ] Build server API endpoints for Contest Prep analysis
+- [ ] Build Contest Prep UI page with guided flow: input opponents → see best MOKIs → see best Scheme
+- [ ] Support paste/manual input of opponent matchups (4 slots × 5 opponents)
+- [ ] Build bookmarklet JS to extract matchups from GA Fantasy contest entry page DOM
+- [ ] Add bookmarklet setup instructions to Contest Prep page
+- [ ] Write tests for Contest Prep engine and endpoints
+
+## Optimizer Fix: Co-optimize Scheme + MOKI Selection
+- [x] Redesign optimizer to evaluate all Schemes first, pick best 4 MOKIs per Scheme, select highest combo
+- [x] Fix scoreChampion to properly weight Scheme-specific actions (kills for kill schemes, balls for ball schemes)
+- [x] Update tests for new co-optimization logic (6 new tests: kill-heavy, ball-heavy, multi-scheme, combo, trait, MahoShojo bug fix)
+- [x] Verify end-to-end with TS checks passing (197 tests, 0 TS errors)

@@ -16,6 +16,13 @@ import { leaderboardEntries, scrapeJobs } from "../drizzle/schema";
 import { invokeLLM } from "./_core/llm";
 import type { Message, ImageContent, TextContent } from "./_core/llm";
 
+// ─── Concurrency Guard ─────────────────────────────────────────────
+let identificationRunning = false;
+
+export function isIdentificationRunning(): boolean {
+  return identificationRunning;
+}
+
 // ─── Types ──────────────────────────────────────────────────────────
 interface IdentifiedCard {
   name: string;
@@ -255,8 +262,17 @@ export async function runIdentificationPipeline(topN: number = 10): Promise<{
   processed: number;
   errors: number;
 }> {
+  if (identificationRunning) {
+    console.log("[CardIdentifier] AI identification already running, skipping duplicate request");
+    return { processed: 0, errors: 0 };
+  }
+  identificationRunning = true;
+
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
+  if (!db) {
+    identificationRunning = false;
+    throw new Error("Database not available");
+  }
 
   // Create a scrape job record
   const [jobResult] = await db.insert(scrapeJobs).values({
@@ -302,5 +318,6 @@ export async function runIdentificationPipeline(topN: number = 10): Promise<{
       .where(eq(scrapeJobs.id, jobId));
   }
 
+  identificationRunning = false;
   return { processed: totalProcessed, errors: totalErrors };
 }
