@@ -115,8 +115,8 @@ describe("estimatePerformance", () => {
 describe("calculateV4Score", () => {
   it("should calculate base score correctly", () => {
     const { baseScore } = calculateV4Score(2.0, 1.0, 50, 0.5, "Basic");
-    // 2.0 * 85 + 1.0 * 40 + 50 * 0.5 + 0.5 * 200 = 170 + 40 + 25 + 100 = 335
-    expect(baseScore).toBeCloseTo(335, 0);
+    // 2.0 * 85 + 1.0 * 40 + 50 * 1.257 + 0.5 * 200 = 170 + 40 + 62.85 + 100 = 372.85
+    expect(baseScore).toBeCloseTo(372.85, 0);
   });
 
   it("should apply rarity multiplier", () => {
@@ -162,8 +162,8 @@ describe("calculateSchemeScore", () => {
 
   it("should weight wart heavily for wart schemes", () => {
     // Use a champion with high wart distance (like Striker class ~80 distance)
-    // Wart scheme: 0.5*85*0 + 0.5*40*0 + 200*0.5*3.0 + 0.5*200*0.5 = 0 + 0 + 300 + 50 = 350
-    // Kills scheme: 0.5*85*3.0 + 0.5*40*0 + 200*0.5*0 + 0.5*200*0.5 = 127.5 + 0 + 0 + 50 = 177.5
+    // Wart scheme: 0.5*85*0 + 0.5*40*0 + 200*1.257*3.0 + 0.5*200*0.5 = 0 + 0 + 754.2 + 50 = 804.2
+    // Kills scheme: 0.5*85*3.0 + 0.5*40*0 + 200*1.257*0 + 0.5*200*0.5 = 127.5 + 0 + 0 + 50 = 177.5
     const wartScore = calculateSchemeScore(0.5, 0.5, 200, 0.5, "Basic", "wart");
     const killsScore = calculateSchemeScore(0.5, 0.5, 200, 0.5, "Basic", "kills");
 

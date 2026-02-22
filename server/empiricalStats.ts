@@ -315,7 +315,7 @@ export function blendStats(
   const confidence = empirical.confidence;
 
   // Reverse-engineer per-stat estimates from empirical avg score
-  // V4 formula: score = kills*85 + balls*40 + wart*0.5 + winRate*200 (per champion, before rarity)
+  // V4 formula: score = kills*85 + balls*40 + wart*1.257 + winRate*200 (per champion, before rarity)
   // We know the per-champion score and can estimate stat proportions
   const rarityMultiplier: Record<string, number> = {
     Basic: 1.0, Common: 1.0, Rare: 1.25, Epic: 1.5, Legendary: 1.75,
@@ -324,7 +324,7 @@ export function blendStats(
 
   // Model's predicted per-champion score (without rarity)
   const modelBaseScore = modelStats.avgKills * 85 + modelStats.avgBalls * 40 +
-    modelStats.avgWartDistance * 0.5 + modelStats.winRate * 200;
+    modelStats.avgWartDistance * 1.257 + modelStats.winRate * 200;
 
   // Empirical per-champion score (remove rarity multiplier to get base)
   const empiricalBaseScore = empirical.avgScore / rm;

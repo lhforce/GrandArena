@@ -1,27 +1,27 @@
 /**
  * Swap Advisor — Post-entry lineup optimization engine.
  *
- * Grand Arena format: Each of your 4 MOKIs plays 5 individual 3v3 matches
- * against 5 different opponents = 20 total matches per round.
+ * After a user enters a contest and sees their actual matchups (which of their
+ * MOKIs face which opponent MOKIs), this engine recommends lineup swaps based
+ * on the H2H database.
  *
  * Flow:
- * 1. User provides their 4 MOKIs and each MOKI's 5 opponents (4×5 = 20 matchups)
- * 2. Engine looks up H2H records for all 20 matchups
- * 3. Engine evaluates each MOKI slot's expected win rate across its 5 opponents
- * 4. Engine tries swapping bench champions into each slot and evaluates
- *    the aggregate win rate across all 5 opponents for that slot
- * 5. Recommends swaps that improve the overall expected outcome
+ * 1. User provides their current 4 MOKIs and the opponent's 4 MOKIs
+ * 2. Engine looks up all H2H records between every pair
+ * 3. Engine evaluates the current assignment's total expected win rate
+ * 4. Engine tries all possible swaps from the user's bench and recommends
+ *    the ones that improve the expected outcome the most
  */
 
 import { getBulkHeadToHead, getBulkMatchPerformance } from "./matchupAnalytics";
 import { getDb } from "./db";
-import { userCards } from "../drizzle/schema";
-import { eq, and } from "drizzle-orm";
+import { userCards, championStats } from "../drizzle/schema";
+import { eq, and, inArray } from "drizzle-orm";
 
 // ─── Types ─────────────────────────────────────────────────────────
 
-/** A single matchup: one of your MOKIs vs one opponent */
-export interface SingleMatchup {
+export interface MatchupSlot {
+  position: number; // 1-4 (match slot)
   yourChampionTokenId: number;
   yourChampionName: string;
   yourChampionClass: string;
@@ -35,236 +35,127 @@ export interface SingleMatchup {
   confidence: "high" | "medium" | "low" | "none";
 }
 
-/** One of your 4 MOKI slots with its 5 opponents */
-export interface MokiSlot {
-  slotIndex: number; // 0-3
-  yourChampionTokenId: number;
-  yourChampionName: string;
-  yourChampionClass: string;
-  opponents: SingleMatchup[];
-  averageWinRate: number; // Average H2H win rate across all 5 opponents
-  expectedWins: number; // Out of 5
-}
-
 export interface SwapRecommendation {
-  slotIndex: number; // Which MOKI slot to swap (0-3)
+  position: number; // Which match slot to swap
   currentChampionTokenId: number;
   currentChampionName: string;
-  currentAvgWinRate: number; // Current avg across 5 opponents
-  currentExpectedWins: number;
+  currentWinRate: number;
+  currentH2hMatches: number;
   suggestedChampionTokenId: number;
   suggestedChampionName: string;
   suggestedChampionClass: string;
-  suggestedAvgWinRate: number; // New avg across 5 opponents
-  suggestedExpectedWins: number;
+  suggestedWinRate: number;
+  suggestedH2hMatches: number;
   winRateImprovement: number; // positive = better
-  expectedWinsImprovement: number;
-  opponentBreakdown: Array<{
-    opponentName: string;
-    opponentTokenId: number;
-    currentWinRate: number;
-    suggestedWinRate: number;
-    improvement: number;
-  }>;
   reason: string;
   confidence: "high" | "medium" | "low";
 }
 
 export interface SwapAnalysisResult {
-  slots: MokiSlot[];
-  currentOverallWinRate: number; // Average across all 20 matchups
-  currentExpectedTotalWins: number; // Out of 20
+  currentMatchups: MatchupSlot[];
+  currentOverallWinRate: number; // Average win rate across all 4 matchups
   recommendations: SwapRecommendation[];
   bestPossibleWinRate: number;
-  bestPossibleExpectedWins: number;
-  improvementPotential: number;
+  improvementPotential: number; // bestPossibleWinRate - currentOverallWinRate
   dataQuality: {
     matchupsWithData: number;
     matchupsWithoutData: number;
     totalH2hMatchesUsed: number;
-    totalMatchups: number;
   };
-}
-
-// ─── Input Types ──────────────────────────────────────────────────
-
-export interface SlotInput {
-  championTokenId: number;
-  opponents: number[]; // Array of 5 opponent championTokenIds
 }
 
 // ─── Core Engine ───────────────────────────────────────────────────
 
 /**
- * Analyze current matchups (4 MOKIs × 5 opponents each) and recommend swaps.
+ * Analyze current matchups and recommend swaps.
  *
- * @param slots - Array of 4 slot inputs, each with a champion and 5 opponents
+ * @param yourChampionIds - Array of 4 champion token IDs in your lineup (ordered by match slot)
+ * @param opponentChampionIds - Array of 4 opponent champion token IDs (ordered by match slot)
  * @param benchChampionIds - Array of available bench champion IDs to swap in
  * @param gameData - Game data for champion name/class lookups
  */
 export async function analyzeMatchupsAndRecommendSwaps(
-  slots: SlotInput[],
+  yourChampionIds: number[],
+  opponentChampionIds: number[],
   benchChampionIds: number[],
-  gameData: Map<number, { name: string; championClass: string; championTokenId?: number }>
+  gameData: Map<number, { name: string; championClass: string }>
 ): Promise<SwapAnalysisResult> {
-  // Collect all unique champion IDs
-  const yourIds = slots.map((s) => s.championTokenId);
-  const allOpponentIds = Array.from(
-    new Set(slots.flatMap((s) => s.opponents))
-  );
-  const allYourIds = Array.from(new Set([...yourIds, ...benchChampionIds]));
+  // Step 1: Get H2H data for all your champions vs all opponents
+  const allYourIds = Array.from(new Set([...yourChampionIds, ...benchChampionIds]));
+  const allOppIds = Array.from(new Set(opponentChampionIds));
 
-  // Step 1: Fetch H2H data for all your+bench champions vs all opponents
-  const h2hMatrix = await getBulkHeadToHead(allYourIds, allOpponentIds);
+  const h2hMatrix = await getBulkHeadToHead(allYourIds, allOppIds);
 
-  // Also get general performance stats for fallback estimation
-  const allIds = Array.from(new Set([...allYourIds, ...allOpponentIds]));
+  // Also get general performance stats for fallback
+  const allIds = Array.from(new Set([...allYourIds, ...allOppIds]));
   const perfData = await getBulkMatchPerformance(allIds);
 
-  // Step 2: Evaluate current matchups for each slot
-  const evaluatedSlots: MokiSlot[] = [];
+  // Step 2: Evaluate current matchups
+  const currentMatchups: MatchupSlot[] = [];
+  for (let i = 0; i < 4; i++) {
+    const yourId = yourChampionIds[i];
+    const oppId = opponentChampionIds[i];
+    if (!yourId || !oppId) continue;
 
-  for (let slotIdx = 0; slotIdx < slots.length; slotIdx++) {
-    const slot = slots[slotIdx];
-    const yourId = slot.championTokenId;
-    const yourInfo = gameData.get(yourId) ?? {
-      name: `#${yourId}`,
-      championClass: "Unknown",
-    };
+    const yourInfo = gameData.get(yourId) ?? { name: `#${yourId}`, championClass: "Unknown" };
+    const oppInfo = gameData.get(oppId) ?? { name: `#${oppId}`, championClass: "Unknown" };
 
-    const opponents: SingleMatchup[] = [];
-    for (const oppId of slot.opponents) {
-      const oppInfo = gameData.get(oppId) ?? {
-        name: `#${oppId}`,
-        championClass: "Unknown",
-      };
+    const h2h = h2hMatrix.get(yourId)?.get(oppId);
+    const winRate = h2h ? h2h.winRate : estimateWinRate(yourId, oppId, perfData);
+    const matches = h2h?.totalMatches ?? 0;
 
-      const h2h = h2hMatrix.get(yourId)?.get(oppId);
-      const winRate = h2h ? h2h.winRate : estimateWinRate(yourId, oppId, perfData);
-      const matches = h2h?.totalMatches ?? 0;
-
-      opponents.push({
-        yourChampionTokenId: yourId,
-        yourChampionName: yourInfo.name,
-        yourChampionClass: yourInfo.championClass,
-        opponentChampionTokenId: oppId,
-        opponentChampionName: oppInfo.name,
-        opponentChampionClass: oppInfo.championClass,
-        h2hWinRate: winRate,
-        h2hMatches: matches,
-        h2hWins: h2h?.wins ?? 0,
-        h2hLosses: h2h?.losses ?? 0,
-        confidence: getConfidence(matches),
-      });
-    }
-
-    const avgWinRate =
-      opponents.length > 0
-        ? Math.round(
-            (opponents.reduce((sum, o) => sum + o.h2hWinRate, 0) / opponents.length) * 100
-          ) / 100
-        : 50;
-
-    const expectedWins =
-      opponents.length > 0
-        ? Math.round(
-            opponents.reduce((sum, o) => sum + o.h2hWinRate / 100, 0) * 100
-          ) / 100
-        : 2.5;
-
-    evaluatedSlots.push({
-      slotIndex: slotIdx,
+    currentMatchups.push({
+      position: i + 1,
       yourChampionTokenId: yourId,
       yourChampionName: yourInfo.name,
       yourChampionClass: yourInfo.championClass,
-      opponents,
-      averageWinRate: avgWinRate,
-      expectedWins,
+      opponentChampionTokenId: oppId,
+      opponentChampionName: oppInfo.name,
+      opponentChampionClass: oppInfo.championClass,
+      h2hWinRate: winRate,
+      h2hMatches: matches,
+      h2hWins: h2h?.wins ?? 0,
+      h2hLosses: h2h?.losses ?? 0,
+      confidence: getConfidence(matches),
     });
   }
 
-  // Step 3: Calculate current overall stats
-  const allMatchups = evaluatedSlots.flatMap((s) => s.opponents);
-  const totalMatchups = allMatchups.length;
   const currentOverallWinRate =
-    totalMatchups > 0
+    currentMatchups.length > 0
       ? Math.round(
-          (allMatchups.reduce((sum, m) => sum + m.h2hWinRate, 0) / totalMatchups) * 100
+          (currentMatchups.reduce((sum, m) => sum + m.h2hWinRate, 0) /
+            currentMatchups.length) *
+            100
         ) / 100
       : 50;
-  const currentExpectedTotalWins =
-    Math.round(allMatchups.reduce((sum, m) => sum + m.h2hWinRate / 100, 0) * 100) / 100;
 
-  // Step 4: Find best swaps for each slot
+  // Step 3: Find best swaps for each position
   const recommendations: SwapRecommendation[] = [];
-  const currentLineupIds = new Set(yourIds);
 
-  for (const slot of evaluatedSlots) {
-    const currentAvgWinRate = slot.averageWinRate;
-    const currentExpectedWins = slot.expectedWins;
+  for (let pos = 0; pos < currentMatchups.length; pos++) {
+    const slot = currentMatchups[pos];
+    const oppId = slot.opponentChampionTokenId;
+    const currentWinRate = slot.h2hWinRate;
 
+    // Try each bench champion in this position
     let bestSwap: {
       champId: number;
-      avgWinRate: number;
-      expectedWins: number;
-      opponentBreakdown: Array<{
-        opponentName: string;
-        opponentTokenId: number;
-        currentWinRate: number;
-        suggestedWinRate: number;
-        improvement: number;
-      }>;
-      totalH2hMatches: number;
+      winRate: number;
+      matches: number;
     } | null = null;
 
     for (const benchId of benchChampionIds) {
-      // Skip if this champion is already in the lineup
-      if (currentLineupIds.has(benchId)) continue;
+      // Skip if this champion is already in the lineup at another position
+      if (yourChampionIds.includes(benchId)) continue;
 
-      // Evaluate this bench champion against all 5 opponents in this slot
-      let totalWinRate = 0;
-      let totalH2hMatches = 0;
-      const breakdown: Array<{
-        opponentName: string;
-        opponentTokenId: number;
-        currentWinRate: number;
-        suggestedWinRate: number;
-        improvement: number;
-      }> = [];
+      const h2h = h2hMatrix.get(benchId)?.get(oppId);
+      const swapWinRate = h2h ? h2h.winRate : estimateWinRate(benchId, oppId, perfData);
+      const swapMatches = h2h?.totalMatches ?? 0;
 
-      for (const opp of slot.opponents) {
-        const oppId = opp.opponentChampionTokenId;
-        const h2h = h2hMatrix.get(benchId)?.get(oppId);
-        const swapWinRate = h2h ? h2h.winRate : estimateWinRate(benchId, oppId, perfData);
-        totalWinRate += swapWinRate;
-        totalH2hMatches += h2h?.totalMatches ?? 0;
-
-        breakdown.push({
-          opponentName: opp.opponentChampionName,
-          opponentTokenId: oppId,
-          currentWinRate: opp.h2hWinRate,
-          suggestedWinRate: swapWinRate,
-          improvement: Math.round((swapWinRate - opp.h2hWinRate) * 100) / 100,
-        });
-      }
-
-      const avgWinRate =
-        slot.opponents.length > 0
-          ? Math.round((totalWinRate / slot.opponents.length) * 100) / 100
-          : 50;
-      const expectedWins =
-        Math.round((totalWinRate / 100) * 100) / 100;
-
-      // Only recommend if meaningfully better (>2% avg improvement)
-      if (avgWinRate > currentAvgWinRate + 2) {
-        if (!bestSwap || avgWinRate > bestSwap.avgWinRate) {
-          bestSwap = {
-            champId: benchId,
-            avgWinRate,
-            expectedWins,
-            opponentBreakdown: breakdown,
-            totalH2hMatches,
-          };
+      // Only recommend if it's meaningfully better (>3% improvement)
+      if (swapWinRate > currentWinRate + 3) {
+        if (!bestSwap || swapWinRate > bestSwap.winRate) {
+          bestSwap = { champId: benchId, winRate: swapWinRate, matches: swapMatches };
         }
       }
     }
@@ -275,37 +166,32 @@ export async function analyzeMatchupsAndRecommendSwaps(
         championClass: "Unknown",
       };
 
-      const improvement = Math.round((bestSwap.avgWinRate - currentAvgWinRate) * 100) / 100;
-      const winsImprovement = Math.round((bestSwap.expectedWins - currentExpectedWins) * 100) / 100;
+      const improvement = Math.round((bestSwap.winRate - currentWinRate) * 100) / 100;
 
       // Build reason string
-      const betterCount = bestSwap.opponentBreakdown.filter((b) => b.improvement > 0).length;
-      const totalOpps = bestSwap.opponentBreakdown.length;
-      let reason = `${swapInfo.name} performs better in ${betterCount}/${totalOpps} matchups`;
-      if (bestSwap.totalH2hMatches >= 20) {
-        reason += ` (based on ${bestSwap.totalH2hMatches} H2H matches)`;
-      } else if (bestSwap.totalH2hMatches > 0) {
-        reason += ` (${bestSwap.totalH2hMatches} H2H matches — limited data)`;
+      let reason = "";
+      if (bestSwap.matches >= 10) {
+        reason = `${swapInfo.name} has a ${bestSwap.winRate}% win rate vs ${slot.opponentChampionName} across ${bestSwap.matches} matches`;
+      } else if (bestSwap.matches > 0) {
+        reason = `${swapInfo.name} has a ${bestSwap.winRate}% win rate vs ${slot.opponentChampionName} (${bestSwap.matches} matches — limited data)`;
       } else {
-        reason += ` (estimated from overall performance)`;
+        reason = `${swapInfo.name} is estimated to perform better based on overall stats`;
       }
 
       recommendations.push({
-        slotIndex: slot.slotIndex,
+        position: pos + 1,
         currentChampionTokenId: slot.yourChampionTokenId,
         currentChampionName: slot.yourChampionName,
-        currentAvgWinRate: currentAvgWinRate,
-        currentExpectedWins: currentExpectedWins,
+        currentWinRate,
+        currentH2hMatches: slot.h2hMatches,
         suggestedChampionTokenId: bestSwap.champId,
         suggestedChampionName: swapInfo.name,
         suggestedChampionClass: swapInfo.championClass,
-        suggestedAvgWinRate: bestSwap.avgWinRate,
-        suggestedExpectedWins: bestSwap.expectedWins,
+        suggestedWinRate: bestSwap.winRate,
+        suggestedH2hMatches: bestSwap.matches,
         winRateImprovement: improvement,
-        expectedWinsImprovement: winsImprovement,
-        opponentBreakdown: bestSwap.opponentBreakdown,
         reason,
-        confidence: getConfidence(bestSwap.totalH2hMatches) as "high" | "medium" | "low",
+        confidence: getConfidence(bestSwap.matches) as "high" | "medium" | "low",
       });
     }
   }
@@ -314,39 +200,29 @@ export async function analyzeMatchupsAndRecommendSwaps(
   recommendations.sort((a, b) => b.winRateImprovement - a.winRateImprovement);
 
   // Calculate best possible win rate if all swaps are applied
-  let bestTotalWinRate = 0;
-  let bestTotalExpectedWins = 0;
-  for (const slot of evaluatedSlots) {
-    const rec = recommendations.find((r) => r.slotIndex === slot.slotIndex);
-    if (rec) {
-      bestTotalWinRate += rec.suggestedAvgWinRate;
-      bestTotalExpectedWins += rec.suggestedExpectedWins;
-    } else {
-      bestTotalWinRate += slot.averageWinRate;
-      bestTotalExpectedWins += slot.expectedWins;
-    }
-  }
+  const bestMatchupRates = currentMatchups.map((m) => {
+    const rec = recommendations.find((r) => r.position === m.position);
+    return rec ? rec.suggestedWinRate : m.h2hWinRate;
+  });
   const bestPossibleWinRate =
-    evaluatedSlots.length > 0
-      ? Math.round((bestTotalWinRate / evaluatedSlots.length) * 100) / 100
+    bestMatchupRates.length > 0
+      ? Math.round(
+          (bestMatchupRates.reduce((sum, r) => sum + r, 0) / bestMatchupRates.length) * 100
+        ) / 100
       : 50;
-  const bestPossibleExpectedWins = Math.round(bestTotalExpectedWins * 100) / 100;
 
-  const matchupsWithData = allMatchups.filter((m) => m.h2hMatches > 0).length;
+  const matchupsWithData = currentMatchups.filter((m) => m.h2hMatches > 0).length;
 
   return {
-    slots: evaluatedSlots,
+    currentMatchups,
     currentOverallWinRate,
-    currentExpectedTotalWins,
     recommendations,
     bestPossibleWinRate,
-    bestPossibleExpectedWins,
     improvementPotential: Math.round((bestPossibleWinRate - currentOverallWinRate) * 100) / 100,
     dataQuality: {
       matchupsWithData,
-      matchupsWithoutData: totalMatchups - matchupsWithData,
-      totalH2hMatchesUsed: allMatchups.reduce((sum, m) => sum + m.h2hMatches, 0),
-      totalMatchups,
+      matchupsWithoutData: currentMatchups.length - matchupsWithData,
+      totalH2hMatchesUsed: currentMatchups.reduce((sum, m) => sum + m.h2hMatches, 0),
     },
   };
 }
@@ -360,37 +236,28 @@ export async function analyzeMatchupsAndRecommendSwaps(
 function estimateWinRate(
   champId: number,
   oppId: number,
-  perfData: Map<
-    string,
-    {
-      avgKills: number;
-      avgBalls: number;
-      avgWartDistance: number;
-      winRate: number;
-      totalMatches: number;
-    }
-  >
+  perfData: Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number; totalMatches: number }>
 ): number {
   const champPerf = perfData.get(String(champId));
   const oppPerf = perfData.get(String(oppId));
 
-  if (!champPerf && !oppPerf) return 50;
-  if (!champPerf) return 40;
-  if (!oppPerf) return 60;
+  if (!champPerf && !oppPerf) return 50; // No data at all
+  if (!champPerf) return 40; // We have no data on our champ but opponent has data
+  if (!oppPerf) return 60; // We have data, opponent doesn't
 
-  const champScore =
-    champPerf.avgKills * 85 + champPerf.avgBalls * 40 + champPerf.avgWartDistance;
-  const oppScore =
-    oppPerf.avgKills * 85 + oppPerf.avgBalls * 40 + oppPerf.avgWartDistance;
+  // Simple estimation: compare win rates and score potential (V4: 85*kills + 40*balls + 1.257*wart)
+  const champScore = champPerf.avgKills * 85 + champPerf.avgBalls * 40 + champPerf.avgWartDistance * 1.257;
+  const oppScore = oppPerf.avgKills * 85 + oppPerf.avgBalls * 40 + oppPerf.avgWartDistance * 1.257;
 
-  const winRateDiff = champPerf.winRate - oppPerf.winRate;
-  const scoreDiff =
-    champScore > 0 || oppScore > 0
-      ? (champScore - oppScore) / Math.max(champScore, oppScore, 1)
-      : 0;
+  // Blend win rate comparison with score comparison
+  const winRateDiff = champPerf.winRate - oppPerf.winRate; // -1 to 1
+  const scoreDiff = champScore > 0 || oppScore > 0
+    ? (champScore - oppScore) / Math.max(champScore, oppScore, 1) // -1 to 1
+    : 0;
 
+  // Convert to win probability (logistic-like)
   const rawAdvantage = winRateDiff * 0.6 + scoreDiff * 0.4;
-  const estimatedWinRate = 50 + rawAdvantage * 30;
+  const estimatedWinRate = 50 + rawAdvantage * 30; // Scale to 20-80 range
 
   return Math.round(Math.max(20, Math.min(80, estimatedWinRate)) * 100) / 100;
 }
@@ -404,11 +271,8 @@ function getConfidence(matches: number): "high" | "medium" | "low" | "none" {
 
 /**
  * Load game data champion lookup map.
- * Indexes by both NFT tokenId and championTokenId.
  */
-export async function loadGameDataLookup(): Promise<
-  Map<number, { name: string; championClass: string; championTokenId?: number }>
-> {
+export async function loadGameDataLookup(): Promise<Map<number, { name: string; championClass: string; championTokenId?: number }>> {
   const fs = await import("fs");
   const path = await import("path");
   const gameDataPath = path.resolve(
@@ -416,10 +280,7 @@ export async function loadGameDataLookup(): Promise<
     "../client/public/game-data.json"
   );
 
-  const lookup = new Map<
-    number,
-    { name: string; championClass: string; championTokenId?: number }
-  >();
+  const lookup = new Map<number, { name: string; championClass: string; championTokenId?: number }>();
 
   try {
     const raw = fs.readFileSync(gameDataPath, "utf-8");
@@ -427,17 +288,16 @@ export async function loadGameDataLookup(): Promise<
 
     for (const champ of gameData.champions ?? []) {
       const tokenId = Number(champ.tokenId);
-      const champTokenId = Number(
-        champ.championTokenId ??
-          champ.attributes?.["Champion Token ID"]?.[0]
-      );
+      const champTokenId = Number(champ.championTokenId ?? champ.attributes?.["Champion Token ID"]?.[0]);
       if (!isNaN(tokenId)) {
         const entry = {
           name: champ.name ?? `#${tokenId}`,
           championClass: champ.class ?? "Unknown",
           championTokenId: !isNaN(champTokenId) ? champTokenId : undefined,
         };
+        // Index by NFT tokenId
         lookup.set(tokenId, entry);
+        // Also index by championTokenId for H2H lookups
         if (!isNaN(champTokenId)) {
           lookup.set(champTokenId, entry);
         }
@@ -463,7 +323,12 @@ export async function getUserBenchChampions(
   const cards = await db
     .select({ championTokenId: userCards.championTokenId })
     .from(userCards)
-    .where(and(eq(userCards.userId, userId), eq(userCards.cardType, "MOKI")));
+    .where(
+      and(
+        eq(userCards.userId, userId),
+        eq(userCards.cardType, "MOKI")
+      )
+    );
 
   const currentSet = new Set(currentLineupTokenIds.map(String));
   return cards

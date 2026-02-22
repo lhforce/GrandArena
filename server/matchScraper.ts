@@ -3,15 +3,11 @@
  * and stores it in the match_history + match_player_stats tables.
  *
  * Data source: GATracker n8n webhook (mokiMatches endpoint)
- *
- * SEASON 1 FILTER: Only fetches/stores matches from Feb 19, 2026 onwards.
- * Stops paginating when it hits matches older than the cutoff date.
- *
- * OPTIMIZED v4: 10 concurrent + Season 1 date filter + auto-resume
- * + batch DB inserts + reduced delays → very fast (~1-2 min for 3 days of data).
+ * Each champion has ~900 matches, 100 per page.
+ * 179 champions × ~10 pages = ~1,790 API calls for full scrape.
  */
 
-import { eq, sql, lt, or } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "./db";
 import {
   matchHistory,
@@ -21,17 +17,7 @@ import {
 
 const GATRACKER_BASE = "https://botto-n8n-botto.eelnl8.easypanel.host/webhook";
 const MATCHES_PER_PAGE = 100;
-const REQUEST_DELAY_MS = 150; // 150ms between pages (~7 req/sec per champion)
-const INTER_BATCH_DELAY_MS = 50; // 50ms between batches
-const PARALLEL_CHAMPIONS = 10; // 10 champions concurrently
-const DB_BATCH_SIZE = 100; // Larger batch inserts
-
-/**
- * Season 1 officially started on February 19, 2026.
- * We only want match data from this date onwards.
- * Format matches the API's matchDate field: "YYYY-MM-DD"
- */
-const SEASON_1_START_DATE = "2026-02-19";
+const REQUEST_DELAY_MS = 800; // Rate limit: ~1.2 req/sec to be polite
 
 // Standard headers required by the GATracker API
 const GATRACKER_HEADERS = {
@@ -112,8 +98,6 @@ export interface ScrapeProgress {
   isRunning: boolean;
   startedAt: string | null;
   estimatedTimeRemaining: string | null;
-  speed: string | null;
-  season1Only: boolean;
 }
 
 // ─── In-memory scrape state ────────────────────────────────────────
@@ -123,20 +107,6 @@ let scrapeAborted = false;
 let currentChampionName: string | null = null;
 let currentPage = 0;
 let scrapeStartedAt: Date | null = null;
-let championsCompletedSoFar = 0;
-
-// ─── Date Helpers ─────────────────────────────────────────────────
-
-/**
- * Check if a match date string is before the Season 1 start date.
- * Returns true if the match is PRE-season (should be excluded).
- */
-function isBeforeSeason1(matchDate: string | null | undefined): boolean {
-  if (!matchDate) return false; // If no date, include it (conservative)
-  // matchDate format can be "YYYY-MM-DD" or ISO string "2026-02-19T..."
-  const dateStr = matchDate.substring(0, 10); // Extract YYYY-MM-DD
-  return dateStr < SEASON_1_START_DATE;
-}
 
 // ─── API Helpers ───────────────────────────────────────────────────
 
@@ -183,40 +153,14 @@ async function fetchMokiMatches(
   }
 }
 
-// ─── Database Helpers (Batch) ─────────────────────────────────────
+// ─── Database Helpers ──────────────────────────────────────────────
 
-async function storeMatchDataBatch(
-  entries: GAMatchEntry[]
-): Promise<{ matchesInserted: number; statsInserted: number }> {
+async function storeMatchData(entries: GAMatchEntry[]): Promise<{ matchesInserted: number; statsInserted: number }> {
   const db = await getDb();
   if (!db) return { matchesInserted: 0, statsInserted: 0 };
 
   let matchesInserted = 0;
   let statsInserted = 0;
-
-  // Collect all match rows and stat rows first
-  const matchRows: Array<{
-    matchId: string;
-    gameType: string;
-    winType: string | null;
-    teamWon: number | null;
-    duration: string;
-    matchDate: string | null;
-    isBye: boolean;
-  }> = [];
-
-  const statRows: Array<{
-    matchId: string;
-    championTokenId: number;
-    championName: string;
-    championClass: string | null;
-    team: number;
-    kills: number;
-    balls: number;
-    wartDistance: string;
-    isWinner: boolean;
-    matchDate: string | null;
-  }> = [];
 
   for (const entry of entries) {
     if (entry.isBye || !entry.match) continue;
@@ -225,96 +169,62 @@ async function storeMatchDataBatch(
     const result = match.result;
     if (!result) continue;
 
-    const matchDate = entry.matchDate || match.matchDate || null;
-
-    // SEASON 1 FILTER: Skip matches before Feb 19, 2026
-    if (isBeforeSeason1(matchDate)) continue;
-
-    matchRows.push({
-      matchId: entry.matchId,
-      gameType: match.gameType || "mokiMayhem",
-      winType: result.winType || null,
-      teamWon: result.teamWon || null,
-      duration: String(result.duration || 0),
-      matchDate,
-      isBye: false,
-    });
-
-    // Player stats for each player in the match
-    for (const player of match.players) {
-      const playerResult = result.players?.find(
-        (pr) => pr.mokiId === player.mokiId
-      );
-      const isWinner = result.teamWon === player.team;
-
-      statRows.push({
-        matchId: entry.matchId,
-        championTokenId: player.tokenId,
-        championName: player.name,
-        championClass: player.class || null,
-        team: player.team,
-        kills: playerResult?.eliminations ?? 0,
-        balls: playerResult?.deposits ?? 0,
-        wartDistance: String(playerResult?.wartDistance ?? 0),
-        isWinner,
-        matchDate,
-      });
-    }
-  }
-
-  // Batch insert matches
-  for (let i = 0; i < matchRows.length; i += DB_BATCH_SIZE) {
-    const batch = matchRows.slice(i, i + DB_BATCH_SIZE);
+    // Insert match (ignore duplicates)
     try {
       await db
         .insert(matchHistory)
-        .values(batch)
-        .onDuplicateKeyUpdate({ set: { matchId: sql`matchId` } });
-      matchesInserted += batch.length;
+        .values({
+          matchId: entry.matchId,
+          gameType: match.gameType || "mokiMayhem",
+          winType: result.winType || null,
+          teamWon: result.teamWon || null,
+          duration: String(result.duration || 0),
+          matchDate: entry.matchDate || match.matchDate || null,
+          isBye: false,
+        })
+        .onDuplicateKeyUpdate({ set: { matchId: entry.matchId } }); // no-op on duplicate
+      matchesInserted++;
     } catch (err: any) {
-      // Fall back to individual inserts on batch failure
-      for (const row of batch) {
-        try {
-          await db
-            .insert(matchHistory)
-            .values(row)
-            .onDuplicateKeyUpdate({ set: { matchId: row.matchId } });
-          matchesInserted++;
-        } catch (innerErr: any) {
-          if (!innerErr.message?.includes("Duplicate")) {
-            console.error("[MatchScraper] Error inserting match:", innerErr.message);
-          }
-        }
+      // Duplicate key is fine, just skip
+      if (!err.message?.includes("Duplicate")) {
+        console.error("[MatchScraper] Error inserting match:", err.message);
       }
     }
-  }
 
-  // Batch insert player stats
-  for (let i = 0; i < statRows.length; i += DB_BATCH_SIZE) {
-    const batch = statRows.slice(i, i + DB_BATCH_SIZE);
-    try {
-      await db
-        .insert(matchPlayerStats)
-        .values(batch)
-        .onDuplicateKeyUpdate({
-          set: { matchId: sql`matchId`, championTokenId: sql`championTokenId` },
-        });
-      statsInserted += batch.length;
-    } catch (err: any) {
-      // Fall back to individual inserts on batch failure
-      for (const row of batch) {
-        try {
-          await db
-            .insert(matchPlayerStats)
-            .values(row)
-            .onDuplicateKeyUpdate({
-              set: { matchId: row.matchId, championTokenId: row.championTokenId },
-            });
-          statsInserted++;
-        } catch (innerErr: any) {
-          if (!innerErr.message?.includes("Duplicate")) {
-            console.error("[MatchScraper] Error inserting player stat:", innerErr.message);
-          }
+    // Insert player stats for each player in the match
+    for (const player of match.players) {
+      // Find this player's stats in the result
+      const playerResult = result.players?.find(
+        (pr) => pr.mokiId === player.mokiId
+      );
+
+      const isWinner = result.teamWon === player.team;
+
+      try {
+        await db
+          .insert(matchPlayerStats)
+          .values({
+            matchId: entry.matchId,
+            championTokenId: player.tokenId,
+            championName: player.name,
+            championClass: player.class || null,
+            team: player.team,
+            kills: playerResult?.eliminations ?? 0,
+            balls: playerResult?.deposits ?? 0,
+            wartDistance: String(playerResult?.wartDistance ?? 0),
+            isWinner,
+            matchDate: entry.matchDate || match.matchDate || null,
+          })
+          .onDuplicateKeyUpdate({
+            set: { matchId: entry.matchId, championTokenId: player.tokenId },
+          }); // no-op on duplicate
+        statsInserted++;
+      } catch (err: any) {
+        if (!err.message?.includes("Duplicate")) {
+          console.error(
+            "[MatchScraper] Error inserting player stat:",
+            err.message
+          );
         }
       }
     }
@@ -323,31 +233,23 @@ async function storeMatchDataBatch(
   return { matchesInserted, statsInserted };
 }
 
-// ─── Single Champion Scraper (with date-based early stop) ────────
+// ─── Main Scraper ──────────────────────────────────────────────────
 
 /**
- * Scrape match history for a single champion.
- * SEASON 1 MODE: Stops paginating as soon as ALL entries on a page
- * are before Feb 19, 2026 (since matches are sorted newest-first).
+ * Scrape match history for a single champion (all pages).
  */
 async function scrapeChampionMatches(
   championTokenId: number,
-  championName: string,
-  startFromPage: number = 1
-): Promise<{
-  matchesStored: number;
-  statsStored: number;
-  totalAvailable: number;
-}> {
+  championName: string
+): Promise<{ matchesStored: number; statsStored: number; totalAvailable: number }> {
   const db = await getDb();
   if (!db) return { matchesStored: 0, statsStored: 0, totalAvailable: 0 };
 
   let totalMatchesStored = 0;
   let totalStatsStored = 0;
   let totalAvailable = 0;
-  let page = startFromPage;
+  let page = 1;
   let totalPages = 1;
-  let newestMatchId: string | null = null;
 
   // Update progress to in_progress
   await db
@@ -356,10 +258,10 @@ async function scrapeChampionMatches(
       championTokenId,
       championName,
       status: "in_progress",
-      pagesScraped: Math.max(0, startFromPage - 1),
+      pagesScraped: 0,
     })
     .onDuplicateKeyUpdate({
-      set: { status: "in_progress" },
+      set: { status: "in_progress", pagesScraped: 0 },
     });
 
   while (page <= totalPages) {
@@ -367,93 +269,63 @@ async function scrapeChampionMatches(
 
     currentPage = page;
 
-    let response = await fetchMokiMatches(championTokenId, page);
+    const response = await fetchMokiMatches(championTokenId, page);
     if (!response) {
       // Retry once after a longer delay
-      await sleep(1500);
-      response = await fetchMokiMatches(championTokenId, page);
-      if (!response) {
+      await sleep(3000);
+      const retry = await fetchMokiMatches(championTokenId, page);
+      if (!retry) {
         console.error(
           `[MatchScraper] Failed to fetch ${championName} page ${page} after retry`
         );
         break;
       }
+      // Use retry result
+      totalPages = retry.pagination.pages;
+      totalAvailable = retry.pagination.total;
+      const { matchesInserted, statsInserted } = await storeMatchData(
+        retry.data
+      );
+      totalMatchesStored += matchesInserted;
+      totalStatsStored += statsInserted;
+    } else {
+      totalPages = response.pagination.pages;
+      totalAvailable = response.pagination.total;
+      const { matchesInserted, statsInserted } = await storeMatchData(
+        response.data
+      );
+      totalMatchesStored += matchesInserted;
+      totalStatsStored += statsInserted;
     }
 
-    totalPages = response.pagination.pages;
-    totalAvailable = response.pagination.total;
-
-    // Capture newestMatchId from page 1 (no extra API call!)
-    if (page === 1 && response.data.length > 0) {
-      newestMatchId = response.data[0].matchId;
-    }
-
-    // SEASON 1 DATE FILTER: Check if we've gone past the cutoff date.
-    // Matches are returned newest-first, so once we see a page where
-    // the LAST entry is before Season 1, we can stop after processing
-    // the Season 1 entries on this page.
-    let hitPreSeason = false;
-    if (response.data.length > 0) {
-      const lastEntry = response.data[response.data.length - 1];
-      const lastDate = lastEntry.matchDate || lastEntry.match?.matchDate;
-      if (isBeforeSeason1(lastDate)) {
-        hitPreSeason = true;
-        // Some entries on this page may still be Season 1 — storeMatchDataBatch
-        // will filter them out via isBeforeSeason1 check
-      }
-    }
-
-    const { matchesInserted, statsInserted } = await storeMatchDataBatch(response.data);
-    totalMatchesStored += matchesInserted;
-    totalStatsStored += statsInserted;
-
-    // Update progress every page
+    // Update progress
     await db
       .update(matchScrapeProgress)
       .set({
         pagesScraped: page,
         totalPages,
         totalMatchesAvailable: totalAvailable,
-        matchesScraped: sql`matchesScraped + ${matchesInserted}`,
+        matchesScraped: totalMatchesStored,
         lastScrapedAt: new Date(),
       })
       .where(eq(matchScrapeProgress.championTokenId, championTokenId));
 
-    // EARLY STOP: If we hit pre-season data, no need to fetch more pages
-    if (hitPreSeason) {
-      console.log(
-        `[MatchScraper] ${championName}: Hit pre-Season 1 data on page ${page}, stopping early`
-      );
-      break;
-    }
-
     page++;
 
-    // Rate limiting between pages
+    // Rate limiting
     if (page <= totalPages) {
       await sleep(REQUEST_DELAY_MS);
     }
   }
 
-  // Mark as completed — newestMatchId already captured from page 1 above
+  // Mark as completed
   const finalStatus = scrapeAborted ? "pending" : "completed";
-
-  // For resume case where we started from page > 1, we need to get newestMatchId
-  if (!newestMatchId && startFromPage > 1) {
-    // Fetch page 1 just to get the newest matchId
-    const page1 = await fetchMokiMatches(championTokenId, 1);
-    if (page1 && page1.data.length > 0) {
-      newestMatchId = page1.data[0].matchId;
-    }
-  }
-
   await db
     .update(matchScrapeProgress)
     .set({
       status: finalStatus,
+      matchesScraped: totalMatchesStored,
       lastScrapedAt: new Date(),
-      newestMatchId,
-      lastIncrementalAt: new Date(),
     })
     .where(eq(matchScrapeProgress.championTokenId, championTokenId));
 
@@ -464,11 +336,8 @@ async function scrapeChampionMatches(
   };
 }
 
-// ─── Champion List ────────────────────────────────────────────────
-
 /**
  * Get all 179 champion token IDs from the GATracker leaderboard API.
- * Also tries to resolve names from the game data file.
  */
 async function fetchChampionList(): Promise<
   Array<{ championTokenId: number; name: string }>
@@ -484,36 +353,17 @@ async function fetchChampionList(): Promise<
 
     if (Array.isArray(raw) && raw.length > 0 && raw[0].data) {
       entries = raw[0].data;
-    } else if (raw.data && Array.isArray(raw.data)) {
-      entries = raw.data;
     } else if (Array.isArray(raw)) {
       entries = raw;
     } else {
-      entries = [];
+      entries = raw.data || [];
     }
 
-    // Try to load names from game data
-    let nameMap = new Map<number, string>();
-    try {
-      const fs = await import("fs/promises");
-      const path = await import("path");
-      const gameDataPath = path.resolve(process.cwd(), "client/public/game-data.json");
-      const gameDataRaw = await fs.readFile(gameDataPath, "utf-8");
-      const gameData = JSON.parse(gameDataRaw);
-      for (const scheme of gameData.schemes || []) {
-        for (const champ of scheme.champions || []) {
-          if (champ.championTokenId) {
-            nameMap.set(Number(champ.championTokenId), champ.name || `Champion #${champ.championTokenId}`);
-          }
-        }
-      }
-    } catch {
-      // game-data.json not available, use fallback names
-    }
-
+    // The leaderboard only has champion_id, not names
+    // We'll get names from the first match response for each champion
     return entries.map((e: any) => ({
       championTokenId: Number(e.champion_id),
-      name: nameMap.get(Number(e.champion_id)) || e.name || `Champion #${e.champion_id}`,
+      name: `Champion #${e.champion_id}`, // Will be updated from match data
     }));
   } catch (err) {
     console.error("[MatchScraper] Failed to fetch champion list:", err);
@@ -521,201 +371,82 @@ async function fetchChampionList(): Promise<
   }
 }
 
-// ─── Clear Pre-Season Data ───────────────────────────────────────
-
-/**
- * Delete all match data from before Season 1 (Feb 19, 2026).
- * Also resets scrape progress so we get a clean re-scrape.
- */
-export async function clearPreSeasonData(): Promise<{
-  matchesDeleted: number;
-  statsDeleted: number;
-  progressReset: number;
-}> {
-  const db = await getDb();
-  if (!db) return { matchesDeleted: 0, statsDeleted: 0, progressReset: 0 };
-
-  console.log(`[MatchScraper] Clearing all match data before ${SEASON_1_START_DATE}...`);
-
-  // Delete player stats for pre-season matches
-  const statsResult = await db.execute(
-    sql`DELETE FROM match_player_stats WHERE matchDate < ${SEASON_1_START_DATE} OR matchDate IS NULL`
-  );
-  const statsDeleted = (statsResult as any)[0]?.affectedRows ?? 0;
-
-  // Delete pre-season matches
-  const matchResult = await db.execute(
-    sql`DELETE FROM match_history WHERE matchDate < ${SEASON_1_START_DATE} OR matchDate IS NULL`
-  );
-  const matchesDeleted = (matchResult as any)[0]?.affectedRows ?? 0;
-
-  // Reset all scrape progress so we re-scrape everything fresh
-  const progressResult = await db.execute(
-    sql`DELETE FROM match_scrape_progress`
-  );
-  const progressReset = (progressResult as any)[0]?.affectedRows ?? 0;
-
-  console.log(
-    `[MatchScraper] Cleared: ${matchesDeleted} matches, ${statsDeleted} player stats, ` +
-      `${progressReset} progress records deleted`
-  );
-
-  return { matchesDeleted, statsDeleted, progressReset };
-}
-
-// ─── Parallel Full Scraper ────────────────────────────────────────
-
-/**
- * Process a batch of champions in parallel.
- * Each champion is wrapped in try/catch so one failure doesn't kill the batch.
- */
-async function scrapeChampionBatch(
-  batch: Array<{ championTokenId: number; name: string; resumeFromPage?: number }>,
-  totalChampions: number
-): Promise<void> {
-  const promises = batch.map(async (champ) => {
-    if (scrapeAborted) return;
-
-    currentChampionName = champ.name;
-
-    try {
-      const result = await scrapeChampionMatches(
-        champ.championTokenId,
-        champ.name,
-        champ.resumeFromPage || 1
-      );
-
-      championsCompletedSoFar++;
-      console.log(
-        `[MatchScraper] ✓ ${champ.name} (#${champ.championTokenId}): ${result.matchesStored} matches ` +
-          `(${championsCompletedSoFar}/${totalChampions})`
-      );
-    } catch (err) {
-      console.error(
-        `[MatchScraper] ✗ Error scraping ${champ.name} (#${champ.championTokenId}):`,
-        err
-      );
-      championsCompletedSoFar++;
-    }
-  });
-
-  await Promise.all(promises);
-}
-
 /**
  * Run the full match history scrape for all champions.
- * SEASON 1 MODE: Only fetches matches from Feb 19, 2026 onwards.
- * Stops early per champion when hitting pre-season data.
- * Estimated time: ~1-2 minutes for 3 days of data.
+ * This is a long-running process (~30-60 minutes for all 179 champions).
  */
 export async function runFullMatchScrape(): Promise<void> {
   if (scrapeRunning) {
-    console.log("[MatchScraper] Scrape already in progress, ignoring duplicate request");
+    console.log("[MatchScraper] Scrape already in progress");
     return;
   }
 
   scrapeRunning = true;
   scrapeAborted = false;
   scrapeStartedAt = new Date();
-  championsCompletedSoFar = 0;
-
-  console.log(`[MatchScraper] === SEASON 1 SCRAPE STARTING (from ${SEASON_1_START_DATE}) ===`);
 
   try {
     const db = await getDb();
     if (!db) {
-      console.error("[MatchScraper] Database not available, aborting");
+      console.error("[MatchScraper] Database not available");
       return;
     }
 
     // Get champion list from leaderboard
     const champions = await fetchChampionList();
-    console.log(`[MatchScraper] Fetched ${champions.length} champions from leaderboard`);
-
-    if (champions.length === 0) {
-      console.error("[MatchScraper] No champions found from leaderboard API, aborting");
-      return;
-    }
-
-    // Check existing progress in DB
-    const existingProgress = await db.select().from(matchScrapeProgress);
-    const progressMap = new Map(
-      existingProgress.map((p) => [p.championTokenId, p])
-    );
-
-    // Build the work queue: skip completed, resume in-progress, start new
-    const workQueue: Array<{ championTokenId: number; name: string; resumeFromPage?: number }> = [];
-    let alreadyCompleted = 0;
-    let resuming = 0;
-
-    for (const champ of champions) {
-      const progress = progressMap.get(champ.championTokenId);
-
-      if (progress?.status === "completed") {
-        alreadyCompleted++;
-        continue;
-      }
-
-      if (progress?.status === "in_progress" || progress?.status === "pending") {
-        // Resume from where we left off (next page after last scraped)
-        const resumePage = (progress.pagesScraped ?? 0) + 1;
-        if (resumePage <= (progress.totalPages ?? 10)) {
-          workQueue.push({
-            ...champ,
-            resumeFromPage: resumePage,
-          });
-          resuming++;
-          continue;
-        }
-      }
-
-      // New champion — start from page 1
-      workQueue.push({ ...champ, resumeFromPage: 1 });
-    }
-
-    championsCompletedSoFar = alreadyCompleted;
-    const totalToProcess = champions.length;
-
     console.log(
-      `[MatchScraper] Work queue: ${workQueue.length} to scrape ` +
-        `(${alreadyCompleted} already done, ${resuming} resuming) ` +
-        `— ${PARALLEL_CHAMPIONS} concurrent, Season 1 only`
+      `[MatchScraper] Starting scrape for ${champions.length} champions`
     );
 
-    if (workQueue.length === 0) {
-      console.log("[MatchScraper] All champions already scraped!");
-      return;
-    }
+    // Check which champions already have completed scrapes
+    const existingProgress = await db
+      .select()
+      .from(matchScrapeProgress);
 
-    // Process in parallel batches
-    for (let i = 0; i < workQueue.length; i += PARALLEL_CHAMPIONS) {
+    const completedSet = new Set(
+      existingProgress
+        .filter((p) => p.status === "completed")
+        .map((p) => p.championTokenId)
+    );
+
+    let completed = 0;
+    for (const champ of champions) {
       if (scrapeAborted) {
         console.log("[MatchScraper] Scrape aborted by user");
         break;
       }
 
-      const batch = workQueue.slice(i, i + PARALLEL_CHAMPIONS);
-      const batchNum = Math.floor(i / PARALLEL_CHAMPIONS) + 1;
-      const totalBatches = Math.ceil(workQueue.length / PARALLEL_CHAMPIONS);
+      // Skip already completed champions
+      if (completedSet.has(champ.championTokenId)) {
+        completed++;
+        continue;
+      }
+
+      currentChampionName = champ.name;
       console.log(
-        `[MatchScraper] Processing batch ${batchNum}/${totalBatches} ` +
-          `(${batch.map((c) => c.name).join(", ")})`
+        `[MatchScraper] Scraping ${champ.name} (${champ.championTokenId}) — ${completed + 1}/${champions.length}`
       );
 
-      await scrapeChampionBatch(batch, totalToProcess);
+      const result = await scrapeChampionMatches(
+        champ.championTokenId,
+        champ.name
+      );
 
-      // Small delay between batches
-      if (i + PARALLEL_CHAMPIONS < workQueue.length) {
-        await sleep(INTER_BATCH_DELAY_MS);
-      }
+      console.log(
+        `[MatchScraper] ${champ.name}: ${result.matchesStored} matches, ${result.statsStored} player stats (${result.totalAvailable} total available)`
+      );
+
+      completed++;
+
+      // Small delay between champions
+      await sleep(500);
     }
 
     console.log(
-      `[MatchScraper] === SEASON 1 SCRAPE COMPLETE === ` +
-        `${championsCompletedSoFar}/${totalToProcess} champions processed`
+      `[MatchScraper] Scrape complete. ${completed}/${champions.length} champions processed.`
     );
   } catch (err) {
-    console.error("[MatchScraper] Fatal error in full scrape:", err);
+    console.error("[MatchScraper] Fatal error:", err);
   } finally {
     scrapeRunning = false;
     currentChampionName = null;
@@ -724,21 +455,9 @@ export async function runFullMatchScrape(): Promise<void> {
 }
 
 /**
- * Run a clean Season 1 scrape: clear old data first, then scrape fresh.
- */
-export async function runSeason1Scrape(): Promise<void> {
-  console.log("[MatchScraper] === CLEAN SEASON 1 SCRAPE ===");
-  console.log("[MatchScraper] Step 1: Clearing pre-season data...");
-  await clearPreSeasonData();
-  console.log("[MatchScraper] Step 2: Running fresh scrape...");
-  await runFullMatchScrape();
-}
-
-/**
  * Stop the running scrape gracefully.
  */
 export function stopMatchScrape(): void {
-  console.log("[MatchScraper] Stop requested");
   scrapeAborted = true;
 }
 
@@ -778,17 +497,12 @@ export async function getMatchScrapeProgress(): Promise<ScrapeProgress> {
     totalPlayerStatsStored = statsCount[0]?.count ?? 0;
   }
 
-  // Estimate time remaining + speed
+  // Estimate time remaining
   let estimatedTimeRemaining: string | null = null;
-  let speed: string | null = null;
-  if (scrapeRunning && scrapeStartedAt && championsCompletedSoFar > 0) {
+  if (scrapeRunning && scrapeStartedAt && championsCompleted > 0) {
     const elapsed = Date.now() - scrapeStartedAt.getTime();
-    const elapsedMin = elapsed / 60000;
-    const champsPerMin = championsCompletedSoFar / elapsedMin;
-    speed = `${champsPerMin.toFixed(1)} champs/min`;
-
-    const remaining =
-      ((totalChampions - championsCompletedSoFar) / champsPerMin) * 60000;
+    const msPerChampion = elapsed / championsCompleted;
+    const remaining = (totalChampions - championsCompleted) * msPerChampion;
     const minutes = Math.ceil(remaining / 60000);
     estimatedTimeRemaining =
       minutes > 60
@@ -808,8 +522,6 @@ export async function getMatchScrapeProgress(): Promise<ScrapeProgress> {
     isRunning: scrapeRunning,
     startedAt: scrapeStartedAt?.toISOString() ?? null,
     estimatedTimeRemaining,
-    speed,
-    season1Only: true,
   };
 }
 
@@ -844,19 +556,15 @@ export interface IncrementalResult {
 }
 
 /**
- * Incremental scrape for a single champion: fetch page 1 (newest matches)
+ * Incremental scrape: for each champion, fetch page 1 (newest matches)
  * and stop as soon as we encounter a matchId we already have.
- * Season 1 filter is applied via storeMatchDataBatch.
+ * Much faster than full scrape — typically 1-2 pages per champion.
  */
 async function scrapeChampionIncremental(
   championTokenId: number,
   championName: string,
   newestKnownMatchId: string | null
-): Promise<{
-  newMatches: number;
-  newStats: number;
-  latestMatchId: string | null;
-}> {
+): Promise<{ newMatches: number; newStats: number; latestMatchId: string | null }> {
   const db = await getDb();
   if (!db) return { newMatches: 0, newStats: 0, latestMatchId: null };
 
@@ -887,10 +595,9 @@ async function scrapeChampionIncremental(
       newEntries.push(entry);
     }
 
-    // Store new entries using batch insert (Season 1 filter applied inside)
+    // Store new entries
     if (newEntries.length > 0) {
-      const { matchesInserted, statsInserted } =
-        await storeMatchDataBatch(newEntries);
+      const { matchesInserted, statsInserted } = await storeMatchData(newEntries);
       totalNewMatches += matchesInserted;
       totalNewStats += statsInserted;
     }
@@ -917,33 +624,25 @@ async function scrapeChampionIncremental(
       .where(eq(matchScrapeProgress.championTokenId, championTokenId));
   }
 
-  return {
-    newMatches: totalNewMatches,
-    newStats: totalNewStats,
-    latestMatchId,
-  };
+  return { newMatches: totalNewMatches, newStats: totalNewStats, latestMatchId };
 }
 
 /**
- * Run incremental match scrape for all champions IN PARALLEL.
+ * Run incremental match scrape for all champions.
  * Only fetches new matches since the last scrape for each champion.
- * Processes 10 champions concurrently for speed.
+ * Typically completes in 5-15 minutes vs 30-60 for full scrape.
  */
 export async function runIncrementalMatchScrape(): Promise<IncrementalResult> {
   if (incrementalRunning || scrapeRunning) {
-    console.log(
-      "[MatchScraper] Scrape already in progress, skipping incremental run"
-    );
-    return (
-      lastIncrementalResult ?? {
-        championsChecked: 0,
-        newMatchesFound: 0,
-        newStatsFound: 0,
-        duration: 0,
-        startedAt: new Date().toISOString(),
-        completedAt: new Date().toISOString(),
-      }
-    );
+    console.log("[MatchScraper] Scrape already in progress, skipping incremental run");
+    return lastIncrementalResult ?? {
+      championsChecked: 0,
+      newMatchesFound: 0,
+      newStatsFound: 0,
+      duration: 0,
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    };
   }
 
   incrementalRunning = true;
@@ -965,9 +664,7 @@ export async function runIncrementalMatchScrape(): Promise<IncrementalResult> {
     const completedChampions = progress.filter((p) => p.status === "completed");
 
     if (completedChampions.length === 0) {
-      console.log(
-        "[MatchScraper] No completed champions found. Run a full scrape first."
-      );
+      console.log("[MatchScraper] No completed champions found. Run a full scrape first.");
       const result: IncrementalResult = {
         championsChecked: 0,
         newMatchesFound: 0,
@@ -981,56 +678,37 @@ export async function runIncrementalMatchScrape(): Promise<IncrementalResult> {
     }
 
     console.log(
-      `[MatchScraper] Starting parallel incremental scrape for ${completedChampions.length} champions (${PARALLEL_CHAMPIONS} concurrent)`
+      `[MatchScraper] Starting incremental scrape for ${completedChampions.length} champions`
     );
 
-    // Process in parallel batches
-    for (let i = 0; i < completedChampions.length; i += PARALLEL_CHAMPIONS) {
+    for (const champ of completedChampions) {
       if (scrapeAborted) break;
 
-      const batch = completedChampions.slice(i, i + PARALLEL_CHAMPIONS);
-
-      const batchResults = await Promise.all(
-        batch.map(async (champ) => {
-          try {
-            const { newMatches, newStats } = await scrapeChampionIncremental(
-              champ.championTokenId,
-              champ.championName ?? `Champion #${champ.championTokenId}`,
-              champ.newestMatchId
-            );
-            return { newMatches, newStats, name: champ.championName };
-          } catch (err) {
-            console.error(
-              `[MatchScraper] Error in incremental scrape for ${champ.championName}:`,
-              err
-            );
-            return { newMatches: 0, newStats: 0, name: champ.championName };
-          }
-        })
+      const { newMatches, newStats } = await scrapeChampionIncremental(
+        champ.championTokenId,
+        champ.championName ?? `Champion #${champ.championTokenId}`,
+        champ.newestMatchId
       );
 
-      for (const r of batchResults) {
-        totalNewMatches += r.newMatches;
-        totalNewStats += r.newStats;
-        championsChecked++;
-        if (r.newMatches > 0) {
-          console.log(
-            `[MatchScraper] ${r.name}: +${r.newMatches} new matches`
-          );
-        }
+      totalNewMatches += newMatches;
+      totalNewStats += newStats;
+      championsChecked++;
+
+      if (newMatches > 0) {
+        console.log(
+          `[MatchScraper] ${champ.championName}: +${newMatches} new matches`
+        );
       }
 
-      // Small delay between batches
-      if (i + PARALLEL_CHAMPIONS < completedChampions.length) {
-        await sleep(INTER_BATCH_DELAY_MS);
-      }
+      // Rate limiting between champions
+      await sleep(300);
     }
 
     const duration = Date.now() - startTime;
     console.log(
       `[MatchScraper] Incremental scrape complete. ` +
-        `${championsChecked} champions checked, ${totalNewMatches} new matches found ` +
-        `in ${Math.round(duration / 1000)}s`
+      `${championsChecked} champions checked, ${totalNewMatches} new matches found ` +
+      `in ${Math.round(duration / 1000)}s`
     );
 
     const result: IncrementalResult = {
@@ -1080,6 +758,7 @@ export function getIncrementalStatus(): {
 
 function getNextCronRun(): string {
   if (!lastIncrementalRun) {
+    // If never run, next run is ~1 hour from server start
     return new Date(Date.now() + CRON_INTERVAL_MS).toISOString();
   }
   const nextRun = new Date(lastIncrementalRun.getTime() + CRON_INTERVAL_MS);
@@ -1093,7 +772,6 @@ let cronIntervalId: ReturnType<typeof setInterval> | null = null;
 
 /**
  * Start the hourly incremental match scrape cron job.
- * Also auto-resumes any interrupted full scrapes on startup.
  * Safe to call multiple times — won't create duplicate intervals.
  */
 export function startMatchScrapeCron(): void {
@@ -1104,46 +782,14 @@ export function startMatchScrapeCron(): void {
 
   console.log("[MatchScraper] Starting hourly incremental match scrape cron");
 
-  // Auto-resume: check for incomplete scrapes after a 10-second delay
-  setTimeout(async () => {
-    try {
-      const db = await getDb();
-      if (!db) return;
+  // Run first incremental scrape after a 2-minute delay (let server fully start)
+  setTimeout(() => {
+    runIncrementalMatchScrape().catch((err) =>
+      console.error("[MatchScraper] Initial incremental scrape failed:", err)
+    );
+  }, 2 * 60 * 1000);
 
-      const progress = await db.select().from(matchScrapeProgress);
-      const incomplete = progress.filter(
-        (p) => p.status === "in_progress" || p.status === "pending"
-      );
-      const completed = progress.filter((p) => p.status === "completed");
-
-      // If there are incomplete champions AND not all are done, auto-resume
-      if (incomplete.length > 0 || completed.length < 179) {
-        console.log(
-          `[MatchScraper] Auto-resume: ${completed.length} completed, ${incomplete.length} incomplete. ` +
-            `Will auto-resume full scrape in 30s...`
-        );
-        setTimeout(() => {
-          if (!scrapeRunning) {
-            console.log("[MatchScraper] Auto-resuming full scrape (Season 1 only)...");
-            runFullMatchScrape().catch((err) =>
-              console.error("[MatchScraper] Auto-resume scrape failed:", err)
-            );
-          }
-        }, 30000);
-      } else {
-        // All done — just run incremental after 2 min
-        setTimeout(() => {
-          runIncrementalMatchScrape().catch((err) =>
-            console.error("[MatchScraper] Initial incremental scrape failed:", err)
-          );
-        }, 2 * 60 * 1000);
-      }
-    } catch (err) {
-      console.error("[MatchScraper] Auto-resume check failed:", err);
-    }
-  }, 10000);
-
-  // Then run incremental every hour
+  // Then run every hour
   cronIntervalId = setInterval(() => {
     console.log("[MatchScraper] Hourly cron triggered");
     runIncrementalMatchScrape().catch((err) =>

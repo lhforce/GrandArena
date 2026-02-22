@@ -16,42 +16,6 @@ import { leaderboardEntries, scrapeJobs } from "../drizzle/schema";
 import { invokeLLM } from "./_core/llm";
 import type { Message, ImageContent, TextContent } from "./_core/llm";
 
-// ─── Concurrency Guard ─────────────────────────────────────────────
-let identificationRunning = false;
-
-export function isIdentificationRunning(): boolean {
-  return identificationRunning;
-}
-
-/**
- * Clean up stale "running" AI identification jobs on server startup.
- * If the server restarts while a job is running, the in-memory flag resets
- * but the DB record stays "running" forever. This marks them as failed.
- */
-export async function cleanupStaleIdentificationJobs(): Promise<number> {
-  const db = await getDb();
-  if (!db) return 0;
-  
-  const result = await db.update(scrapeJobs)
-    .set({
-      status: "failed",
-      errorMessage: "Stale job: server restarted while running",
-      completedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(scrapeJobs.status, "running"),
-        eq(scrapeJobs.jobType, "ai_identification")
-      )
-    );
-  
-  const cleaned = (result as any)[0]?.affectedRows ?? 0;
-  if (cleaned > 0) {
-    console.log(`[CardIdentifier] Cleaned up ${cleaned} stale AI identification job(s) from previous server session`);
-  }
-  return cleaned;
-}
-
 // ─── Types ──────────────────────────────────────────────────────────
 interface IdentifiedCard {
   name: string;
@@ -291,17 +255,8 @@ export async function runIdentificationPipeline(topN: number = 10): Promise<{
   processed: number;
   errors: number;
 }> {
-  if (identificationRunning) {
-    console.log("[CardIdentifier] AI identification already running, skipping duplicate request");
-    return { processed: 0, errors: 0 };
-  }
-  identificationRunning = true;
-
   const db = await getDb();
-  if (!db) {
-    identificationRunning = false;
-    throw new Error("Database not available");
-  }
+  if (!db) throw new Error("Database not available");
 
   // Create a scrape job record
   const [jobResult] = await db.insert(scrapeJobs).values({
@@ -347,6 +302,5 @@ export async function runIdentificationPipeline(topN: number = 10): Promise<{
       .where(eq(scrapeJobs.id, jobId));
   }
 
-  identificationRunning = false;
   return { processed: totalProcessed, errors: totalErrors };
 }

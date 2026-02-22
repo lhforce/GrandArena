@@ -1,8 +1,8 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "d954346f-6210-48f7-8334-fbf2058207d3",
-  "prevId": "ff699c5e-a0b1-4cc5-b477-1ffa82929833",
+  "id": "7ea3e39e-fe93-4aff-8ae4-9c3ffc0a032b",
+  "prevId": "d954346f-6210-48f7-8334-fbf2058207d3",
   "tables": {
     "card_lockups": {
       "name": "card_lockups",
@@ -486,6 +486,68 @@
           ]
         }
       },
+      "checkConstraint": {}
+    },
+    "favorite_contests": {
+      "name": "favorite_contests",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "userId": {
+          "name": "userId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "contestId": {
+          "name": "contestId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "idx_fav_user_contest": {
+          "name": "idx_fav_user_contest",
+          "columns": [
+            "userId",
+            "contestId"
+          ],
+          "isUnique": true
+        },
+        "idx_fav_user": {
+          "name": "idx_fav_user",
+          "columns": [
+            "userId"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "favorite_contests_id": {
+          "name": "favorite_contests_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
       "checkConstraint": {}
     },
     "gem_spending_log": {

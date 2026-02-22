@@ -64,7 +64,7 @@ export const FUR_MULTIPLIER: Record<string, number> = {
 // ─── V4 Scoring Constants ────────────────────────────────────────────────────
 const V4_KILL_POINTS = 85;
 const V4_BALL_POINTS = 40;
-const V4_WART_MULTIPLIER = 0.5; // Approximate per-distance-unit
+const V4_WART_MULTIPLIER = 1.257; // Validated against GATracker (Fenrir: 291.9 avg wart → ~430 score)
 const V4_WIN_BONUS = 200;
 
 // ─── Card Rarity Multipliers (V4) ───────────────────────────────────────────

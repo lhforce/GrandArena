@@ -10,8 +10,6 @@ import { getDb } from "./db";
 import { savedLineups, contests, leaderboardEntries, userCards } from "../drizzle/schema";
 import {
   runFullMatchScrape,
-  runSeason1Scrape,
-  clearPreSeasonData,
   stopMatchScrape,
   getMatchScrapeProgress,
   scrapeSingleChampion,
@@ -35,14 +33,6 @@ import {
   loadGameDataLookup,
   getUserBenchChampions,
 } from "./swapAdvisor";
-import {
-  analyzeContestPrep,
-  getUserMokisForPrep,
-  loadSchemeData,
-} from "./contestPrep";
-
-// In-memory store for bookmarklet sessions
-const bookmarkletSessions = new Map<string, { data: any; createdAt: number }>();
 
 export const matchupRouter = router({
   /**
@@ -55,26 +45,6 @@ export const matchupRouter = router({
       console.error("[MatchupRouter] Scrape failed:", err)
     );
     return { started: true, message: "Match history scrape started in background" };
-  }),
-
-  /**
-   * Start a clean Season 1 scrape: clear pre-season data, then scrape fresh.
-   * Only fetches matches from Feb 19, 2026 onwards.
-   */
-  startSeason1Scrape: publicProcedure.mutation(async () => {
-    // Run in background (don't await)
-    runSeason1Scrape().catch((err) =>
-      console.error("[MatchupRouter] Season 1 scrape failed:", err)
-    );
-    return { started: true, message: "Season 1 scrape started — clearing old data and re-scraping from Feb 19" };
-  }),
-
-  /**
-   * Clear all pre-season match data (before Feb 19, 2026).
-   */
-  clearPreSeasonData: publicProcedure.mutation(async () => {
-    const result = await clearPreSeasonData();
-    return result;
   }),
 
   /**
@@ -227,12 +197,8 @@ export const matchupRouter = router({
   analyzeSwaps: publicProcedure
     .input(
       z.object({
-        slots: z.array(
-          z.object({
-            championTokenId: z.number(),
-            opponents: z.array(z.number()).min(1).max(10),
-          })
-        ).min(1).max(4),
+        yourChampionIds: z.array(z.number()).length(4),
+        opponentChampionIds: z.array(z.number()).length(4),
         benchChampionIds: z.array(z.number()).optional(),
       })
     )
@@ -240,14 +206,14 @@ export const matchupRouter = router({
       const gameData = await loadGameDataLookup();
 
       // If no bench provided and user is logged in, get their full inventory
-      const yourIds = input.slots.map((s) => s.championTokenId);
       let benchIds = input.benchChampionIds ?? [];
       if (benchIds.length === 0 && ctx.user) {
-        benchIds = await getUserBenchChampions(ctx.user.id, yourIds);
+        benchIds = await getUserBenchChampions(ctx.user.id, input.yourChampionIds);
       }
 
       const result = await analyzeMatchupsAndRecommendSwaps(
-        input.slots,
+        input.yourChampionIds,
+        input.opponentChampionIds,
         benchIds,
         gameData
       );
@@ -450,12 +416,7 @@ export const matchupRouter = router({
     .input(
       z.object({
         lineupId: z.number(),
-        // 4 slots, each with up to 5 opponent championTokenIds
-        opponentSlots: z.array(
-          z.object({
-            opponents: z.array(z.number()).min(1).max(10),
-          })
-        ).min(1).max(4),
+        opponentChampionIds: z.array(z.number()).length(4),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -505,6 +466,7 @@ export const matchupRouter = router({
         if (champId && !isNaN(champId)) {
           yourChampionIds.push(champId);
         } else {
+          // Fallback: check if the nftId itself is a championTokenId
           const asNum = Number(nftId);
           if (!isNaN(asNum) && gameData.has(asNum)) {
             yourChampionIds.push(asNum);
@@ -519,17 +481,12 @@ export const matchupRouter = router({
         );
       }
 
-      // Build slots with opponents
-      const slots = yourChampionIds.map((champId, idx) => ({
-        championTokenId: champId,
-        opponents: input.opponentSlots[idx]?.opponents ?? [],
-      }));
-
       // Get user's full bench (all owned MOKIs minus the ones in this lineup)
       const benchIds = await getUserBenchChampions(ctx.user.id, yourChampionIds);
 
       const result = await analyzeMatchupsAndRecommendSwaps(
-        slots,
+        yourChampionIds,
+        input.opponentChampionIds,
         benchIds,
         gameData
       );
@@ -552,123 +509,6 @@ export const matchupRouter = router({
         contestName,
         entryNumber: lineup.entryNumber,
       };
-    }),
-
-  // ─── Contest Prep (Proactive Opponent Scouting) ────────────────────
-
-  /**
-   * Contest Prep: Given opponent matchups (4 slots × 5 opponents each),
-   * find the optimal MOKIs from the user's collection and best Scheme card.
-   */
-  contestPrep: protectedProcedure
-    .input(
-      z.object({
-        slots: z.array(
-          z.object({
-            slotIndex: z.number(),
-            opponentIds: z.array(z.number()),
-            opponentNames: z.array(z.string()),
-          })
-        ).min(1).max(4),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const gameData = await loadGameDataLookup();
-      const schemeData = await loadSchemeData();
-      const userMokis = await getUserMokisForPrep(ctx.user.id);
-
-      if (userMokis.length === 0) {
-        throw new Error(
-          "No MOKIs found in your collection. Please sync your cards first in My Cards."
-        );
-      }
-
-      const result = await analyzeContestPrep(
-        input.slots,
-        userMokis,
-        gameData,
-        schemeData
-      );
-
-      return result;
-    }),
-
-  /**
-   * Receive matchup data from the bookmarklet.
-   * Stores it temporarily and returns a session token for the UI to fetch.
-   */
-  bookmarkletIngest: publicProcedure
-    .input(
-      z.object({
-        contestId: z.string().optional(),
-        entryId: z.string().optional(),
-        contestName: z.string().optional(),
-        slots: z.array(
-          z.object({
-            slotIndex: z.number(),
-            yourMoki: z.object({
-              name: z.string(),
-              tokenId: z.string().optional(),
-            }),
-            opponents: z.array(
-              z.object({
-                name: z.string(),
-                tokenId: z.string().optional(),
-              })
-            ),
-          })
-        ),
-        timestamp: z.number(),
-      })
-    )
-    .mutation(async ({ input }) => {
-      // Store in memory with a session key
-      const sessionKey = `bm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      bookmarkletSessions.set(sessionKey, {
-        data: input,
-        createdAt: Date.now(),
-      });
-
-      // Clean up old sessions (>30 min)
-      const cutoff = Date.now() - 30 * 60 * 1000;
-      Array.from(bookmarkletSessions.entries()).forEach(([key, val]) => {
-        if (val.createdAt < cutoff) bookmarkletSessions.delete(key);
-      });
-
-      return { sessionKey, received: true };
-    }),
-
-  /**
-   * Fetch bookmarklet data by session key (polled by the UI).
-   */
-  bookmarkletFetch: publicProcedure
-    .input(z.object({ sessionKey: z.string() }))
-    .query(async ({ input }) => {
-      const session = bookmarkletSessions.get(input.sessionKey);
-      if (!session) return { found: false, data: null };
-      return { found: true, data: session.data };
-    }),
-
-  /**
-   * Get the latest bookmarklet session (for auto-detection).
-   */
-  bookmarkletLatest: publicProcedure
-    .query(async () => {
-      // Find the most recent session
-      let latestEntry: { key: string; data: any; createdAt: number } | null = null;
-      const entries = Array.from(bookmarkletSessions.entries());
-      for (let i = 0; i < entries.length; i++) {
-        const [key, val] = entries[i];
-        if (!latestEntry || val.createdAt > latestEntry.createdAt) {
-          latestEntry = { key, data: val.data, createdAt: val.createdAt };
-        }
-      }
-      if (!latestEntry) return { found: false as const, data: null, sessionKey: null };
-      // Only return if less than 5 minutes old
-      if (Date.now() - latestEntry.createdAt > 5 * 60 * 1000) {
-        return { found: false as const, data: null, sessionKey: null };
-      }
-      return { found: true as const, data: latestEntry.data, sessionKey: latestEntry.key };
     }),
 
   // ─── Cron Job Management ──────────────────────────────────────────

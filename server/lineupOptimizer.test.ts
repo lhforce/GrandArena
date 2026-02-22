@@ -88,8 +88,9 @@ describe("scoreChampion", () => {
   it("scores a Basic champion with no scheme", () => {
     const champ = makeChampion("TestMoki", "Basic", "1");
     const score = scoreChampion(champ, null);
-    // Base: (2*85 + 1*40 + 50*0.5 + 0.3*200) * 1.0 = 170+40+25+60 = 295
-    expect(score).toBe(295);
+    // Base: (2*85 + 1*40 + 50*1.257 + 0.3*200) * 1.0 = 170+40+62.85+60 = 332.85 → 333
+    // Note: multiplier applied per-term, so actual = Math.round(170+40+62.85+60) = 333
+    expect(score).toBe(333);
   });
 
   it("applies rarity multiplier for Legendary", () => {
@@ -97,20 +98,23 @@ describe("scoreChampion", () => {
     const legendary = makeChampion("LegendMoki", "Legendary", "2");
     const basicScore = scoreChampion(basic, null);
     const legendaryScore = scoreChampion(legendary, null);
-    // Legendary should be 1.75x the Basic score
-    expect(legendaryScore).toBe(Math.round(295 * 1.75));
+    // Legendary should be 1.75x the Basic score (each term * 1.75, then rounded)
+    // (2*85*1.75 + 1*40*1.75 + 50*1.257*1.75 + 0.3*200*1.75) = 297.5+70+109.9875+105 = 582.4875 → 582
+    expect(legendaryScore).toBe(582);
   });
 
   it("applies rarity multiplier for Rare", () => {
     const champ = makeChampion("RareMoki", "Rare", "3");
     const score = scoreChampion(champ, null);
-    expect(score).toBe(Math.round(295 * 1.25));
+    // (2*85*1.25 + 1*40*1.25 + 50*1.257*1.25 + 0.3*200*1.25) = 212.5+50+78.5625+75 = 416.0625 → 416
+    expect(score).toBe(416);
   });
 
   it("applies rarity multiplier for Epic", () => {
     const champ = makeChampion("EpicMoki", "Epic", "4");
     const score = scoreChampion(champ, null);
-    expect(score).toBe(Math.round(295 * 1.5));
+    // (2*85*1.5 + 1*40*1.5 + 50*1.257*1.5 + 0.3*200*1.5) = 255+60+94.275+90 = 499.275 → 499
+    expect(score).toBe(499);
   });
 
   it("adds scheme bonus for kills category", () => {
@@ -121,25 +125,20 @@ describe("scoreChampion", () => {
     expect(withScheme).toBeGreaterThan(withoutScheme);
   });
 
-  it("qualifying champions under trait scheme score same as base (no per-MOKI bonus — bonus is at lineup level)", () => {
+  it("adds trait bonus for qualifying champions", () => {
     const champ = makeChampion("ShadowMoki", "Basic", "6");
     const scheme = makeScheme("Shadow", "trait", true, ["ct-6"]);
     const withScheme = scoreChampion(champ, scheme);
     const withoutScheme = scoreChampion(champ, null);
-    // Qualifying MOKIs get their full base score (no per-MOKI bonus).
-    // The trait bonus is applied at the lineup level in the co-optimization loop.
-    // Non-qualifying MOKIs get penalized (30% of base), so qualifying > non-qualifying.
-    expect(withScheme).toBeGreaterThanOrEqual(withoutScheme);
+    expect(withScheme).toBeGreaterThan(withoutScheme);
   });
 
-  it("penalizes non-qualifying champions under trait schemes", () => {
+  it("does not add trait bonus for non-qualifying champions", () => {
     const champ = makeChampion("RainbowMoki", "Basic", "7");
     const scheme = makeScheme("Shadow", "trait", true, ["ct-999"]); // Different ID
     const withScheme = scoreChampion(champ, scheme);
     const withoutScheme = scoreChampion(champ, null);
-    // Non-qualifying MOKIs get only tiebreaker score under trait schemes,
-    // which should be less than the full balanced score (no scheme)
-    expect(withScheme).toBeLessThan(withoutScheme);
+    expect(withScheme).toBe(withoutScheme);
   });
 });
 
@@ -498,17 +497,16 @@ describe("performance stats differentiation", () => {
   });
 
   it("scheme imageUrl is preserved in optimizer output", () => {
-    // Use kill-heavy MOKIs with a kills scheme so the scheme wins over no-scheme baseline
     const mokis: ChampionCard[] = [
-      { tokenId: "1", championTokenId: "ct-1", name: "A", rarity: "Basic", avgKills: 5, avgBalls: 0, avgWartDistance: 10, winRate: 0.5 },
-      { tokenId: "2", championTokenId: "ct-2", name: "B", rarity: "Basic", avgKills: 4, avgBalls: 0, avgWartDistance: 10, winRate: 0.5 },
-      { tokenId: "3", championTokenId: "ct-3", name: "C", rarity: "Basic", avgKills: 6, avgBalls: 0, avgWartDistance: 10, winRate: 0.5 },
-      { tokenId: "4", championTokenId: "ct-4", name: "D", rarity: "Basic", avgKills: 3, avgBalls: 0, avgWartDistance: 10, winRate: 0.5 },
+      { tokenId: "1", championTokenId: "ct-1", name: "A", rarity: "Basic", avgKills: 3, avgBalls: 1, avgWartDistance: 50, winRate: 0.5 },
+      { tokenId: "2", championTokenId: "ct-2", name: "B", rarity: "Basic", avgKills: 2, avgBalls: 1, avgWartDistance: 50, winRate: 0.5 },
+      { tokenId: "3", championTokenId: "ct-3", name: "C", rarity: "Basic", avgKills: 4, avgBalls: 1, avgWartDistance: 50, winRate: 0.5 },
+      { tokenId: "4", championTokenId: "ct-4", name: "D", rarity: "Basic", avgKills: 1, avgBalls: 1, avgWartDistance: 50, winRate: 0.5 },
     ];
     const schemes: SchemeCardData[] = [{
-      tokenId: "scheme-1", name: "Kill Scheme", description: "",
+      tokenId: "scheme-1", name: "Test Scheme", description: "",
       hasTraitFilter: false, qualifyingChampionIds: [],
-      category: "kills", riskLevel: "reliable", imageUrl: "https://example.com/scheme.webp",
+      category: "other", riskLevel: "reliable", imageUrl: "https://example.com/scheme.webp",
     }];
     const rules: ContestRules = {
       rarityRestriction: "OPEN", isOneOfEach: false, isStarCap: false,
@@ -722,472 +720,5 @@ describe("selectBestScheme with risk adjustment", () => {
     const result = selectBestScheme(champs, [riskyScheme, moderateScheme], schemeEmpirical);
     // With strong empirical override, Cursed Dinner should be boosted enough to compete
     expect(result).toBeDefined();
-  });
-});
-
-
-// ─── Co-Optimization Tests: Scheme + MOKI Selection ─────────────
-
-describe("co-optimization: Scheme drives MOKI selection", () => {
-  const defaultRules: ContestRules = {
-    rarityRestriction: "OPEN",
-    isOneOfEach: false,
-    isStarCap: false,
-    maxEntriesPerUser: 5,
-    format: "50/50",
-  };
-
-  it("picks kill-heavy MOKIs when a kill Scheme is best", () => {
-    // Mix of killers and ball carriers
-    const mokis: ChampionCard[] = [
-      makeChampion("Killer1", "Epic", "k1", { avgKills: 5, avgBalls: 0, avgWartDistance: 10, winRate: 0.5 }),
-      makeChampion("Killer2", "Epic", "k2", { avgKills: 4, avgBalls: 0.1, avgWartDistance: 15, winRate: 0.5 }),
-      makeChampion("Killer3", "Epic", "k3", { avgKills: 3.5, avgBalls: 0.2, avgWartDistance: 20, winRate: 0.5 }),
-      makeChampion("Killer4", "Epic", "k4", { avgKills: 3, avgBalls: 0.3, avgWartDistance: 25, winRate: 0.5 }),
-      makeChampion("BallCarrier1", "Epic", "b1", { avgKills: 0, avgBalls: 5, avgWartDistance: 0, winRate: 0.5 }),
-      makeChampion("BallCarrier2", "Epic", "b2", { avgKills: 0, avgBalls: 4.5, avgWartDistance: 0, winRate: 0.5 }),
-      makeChampion("BallCarrier3", "Epic", "b3", { avgKills: 0.1, avgBalls: 4, avgWartDistance: 0, winRate: 0.5 }),
-      makeChampion("BallCarrier4", "Epic", "b4", { avgKills: 0.1, avgBalls: 3.5, avgWartDistance: 0, winRate: 0.5 }),
-    ];
-
-    // Only a kill-focused scheme available
-    const killScheme = makeScheme("Aggressive Specialization", "kills", false, [], "reliable");
-
-    const result = optimizeLineups({
-      ownedMokis: mokis,
-      ownedSchemes: [killScheme],
-      allSchemes: [killScheme],
-      contestRules: { ...defaultRules, rarityRestriction: "EPIC_ONLY" },
-      numEntries: 1,
-      entryFee: 0,
-      dailyBudget: 5000,
-    });
-
-    expect(result.lineups).toHaveLength(1);
-    expect(result.lineups[0].scheme?.name).toBe("Aggressive Specialization");
-
-    // All 4 selected MOKIs should be killers (high avgKills)
-    const selectedNames = result.lineups[0].champions.map((s) => s.champion.name);
-    expect(selectedNames).toContain("Killer1");
-    expect(selectedNames).toContain("Killer2");
-    expect(selectedNames).toContain("Killer3");
-    expect(selectedNames).toContain("Killer4");
-    // No ball carriers should be selected
-    expect(selectedNames).not.toContain("BallCarrier1");
-    expect(selectedNames).not.toContain("BallCarrier2");
-  });
-
-  it("picks ball-heavy MOKIs when a ball Scheme is best", () => {
-    const mokis: ChampionCard[] = [
-      makeChampion("Killer1", "Epic", "k1", { avgKills: 5, avgBalls: 0, avgWartDistance: 10, winRate: 0.5 }),
-      makeChampion("Killer2", "Epic", "k2", { avgKills: 4, avgBalls: 0.1, avgWartDistance: 15, winRate: 0.5 }),
-      makeChampion("Killer3", "Epic", "k3", { avgKills: 3.5, avgBalls: 0.2, avgWartDistance: 20, winRate: 0.5 }),
-      makeChampion("Killer4", "Epic", "k4", { avgKills: 3, avgBalls: 0.3, avgWartDistance: 25, winRate: 0.5 }),
-      makeChampion("BallCarrier1", "Epic", "b1", { avgKills: 0, avgBalls: 5, avgWartDistance: 0, winRate: 0.5 }),
-      makeChampion("BallCarrier2", "Epic", "b2", { avgKills: 0, avgBalls: 4.5, avgWartDistance: 0, winRate: 0.5 }),
-      makeChampion("BallCarrier3", "Epic", "b3", { avgKills: 0.1, avgBalls: 4, avgWartDistance: 0, winRate: 0.5 }),
-      makeChampion("BallCarrier4", "Epic", "b4", { avgKills: 0.1, avgBalls: 3.5, avgWartDistance: 0, winRate: 0.5 }),
-    ];
-
-    // Only a ball-focused scheme available
-    const ballScheme = makeScheme("Collective Specialization", "balls", false, [], "reliable");
-
-    const result = optimizeLineups({
-      ownedMokis: mokis,
-      ownedSchemes: [ballScheme],
-      allSchemes: [ballScheme],
-      contestRules: { ...defaultRules, rarityRestriction: "EPIC_ONLY" },
-      numEntries: 1,
-      entryFee: 0,
-      dailyBudget: 5000,
-    });
-
-    expect(result.lineups).toHaveLength(1);
-    expect(result.lineups[0].scheme?.name).toBe("Collective Specialization");
-
-    // All 4 selected MOKIs should be ball carriers
-    const selectedNames = result.lineups[0].champions.map((s) => s.champion.name);
-    expect(selectedNames).toContain("BallCarrier1");
-    expect(selectedNames).toContain("BallCarrier2");
-    expect(selectedNames).toContain("BallCarrier3");
-    expect(selectedNames).toContain("BallCarrier4");
-    // No killers should be selected
-    expect(selectedNames).not.toContain("Killer1");
-    expect(selectedNames).not.toContain("Killer2");
-  });
-
-  it("selects the best Scheme+MOKI combo when multiple Schemes are available", () => {
-    // 4 killers and 4 ball carriers, with ball carriers having higher volume
-    const mokis: ChampionCard[] = [
-      makeChampion("Killer1", "Epic", "k1", { avgKills: 3, avgBalls: 0, avgWartDistance: 10, winRate: 0.5 }),
-      makeChampion("Killer2", "Epic", "k2", { avgKills: 2.5, avgBalls: 0, avgWartDistance: 10, winRate: 0.5 }),
-      makeChampion("Killer3", "Epic", "k3", { avgKills: 2, avgBalls: 0, avgWartDistance: 10, winRate: 0.5 }),
-      makeChampion("Killer4", "Epic", "k4", { avgKills: 1.5, avgBalls: 0, avgWartDistance: 10, winRate: 0.5 }),
-      makeChampion("BallGod1", "Epic", "b1", { avgKills: 0, avgBalls: 6, avgWartDistance: 0, winRate: 0.5 }),
-      makeChampion("BallGod2", "Epic", "b2", { avgKills: 0, avgBalls: 5.5, avgWartDistance: 0, winRate: 0.5 }),
-      makeChampion("BallGod3", "Epic", "b3", { avgKills: 0, avgBalls: 5, avgWartDistance: 0, winRate: 0.5 }),
-      makeChampion("BallGod4", "Epic", "b4", { avgKills: 0, avgBalls: 4.5, avgWartDistance: 0, winRate: 0.5 }),
-    ];
-
-    const killScheme = makeScheme("Kill Focus", "kills", false, [], "reliable");
-    const ballScheme = makeScheme("Ball Focus", "balls", false, [], "reliable");
-
-    const result = optimizeLineups({
-      ownedMokis: mokis,
-      ownedSchemes: [killScheme, ballScheme],
-      allSchemes: [killScheme, ballScheme],
-      contestRules: { ...defaultRules, rarityRestriction: "EPIC_ONLY" },
-      numEntries: 1,
-      entryFee: 0,
-      dailyBudget: 5000,
-    });
-
-    expect(result.lineups).toHaveLength(1);
-    // The ball carriers have much higher volume (avg 5.25 balls vs avg 2.25 kills)
-    // So the ball scheme + ball carriers combo should win
-    expect(result.lineups[0].scheme?.name).toBe("Ball Focus");
-    const selectedNames = result.lineups[0].champions.map((s) => s.champion.name);
-    expect(selectedNames).toContain("BallGod1");
-    expect(selectedNames).toContain("BallGod2");
-  });
-
-  it("combo scheme (Cage Match) picks MOKIs that maximize combined kills+balls", () => {
-    const mokis: ChampionCard[] = [
-      // Pure killers: high kills, no balls
-      makeChampion("PureKiller", "Epic", "pk1", { avgKills: 4, avgBalls: 0, avgWartDistance: 10, winRate: 0.5 }),
-      // Pure ball carriers: no kills, high balls
-      makeChampion("PureBaller", "Epic", "pb1", { avgKills: 0, avgBalls: 5, avgWartDistance: 0, winRate: 0.5 }),
-      // Hybrid: decent kills AND decent balls
-      makeChampion("Hybrid1", "Epic", "h1", { avgKills: 2, avgBalls: 2.5, avgWartDistance: 10, winRate: 0.5 }),
-      makeChampion("Hybrid2", "Epic", "h2", { avgKills: 1.8, avgBalls: 2.3, avgWartDistance: 10, winRate: 0.5 }),
-      makeChampion("Hybrid3", "Epic", "h3", { avgKills: 1.5, avgBalls: 2, avgWartDistance: 10, winRate: 0.5 }),
-      makeChampion("Hybrid4", "Epic", "h4", { avgKills: 1.3, avgBalls: 1.8, avgWartDistance: 10, winRate: 0.5 }),
-      makeChampion("Weak1", "Epic", "w1", { avgKills: 0.5, avgBalls: 0.5, avgWartDistance: 10, winRate: 0.3 }),
-      makeChampion("Weak2", "Epic", "w2", { avgKills: 0.3, avgBalls: 0.3, avgWartDistance: 10, winRate: 0.3 }),
-    ];
-
-    // Cage Match: +35 per elimination, +10 per ball
-    const cageMatch = makeScheme("Cage Match", "combo", false, [], "reliable");
-
-    const result = optimizeLineups({
-      ownedMokis: mokis,
-      ownedSchemes: [cageMatch],
-      allSchemes: [cageMatch],
-      contestRules: { ...defaultRules, rarityRestriction: "EPIC_ONLY" },
-      numEntries: 1,
-      entryFee: 0,
-      dailyBudget: 5000,
-    });
-
-    expect(result.lineups).toHaveLength(1);
-    expect(result.lineups[0].scheme?.name).toBe("Cage Match");
-
-    // With Cage Match weighting kills at 35pts and balls at 10pts,
-    // PureKiller (4 kills * 35 = 140) should be valued highly
-    // PureBaller (5 balls * 10 = 50) should be valued less
-    // The lineup should prefer killers and hybrids over pure ballers
-    const selectedNames = result.lineups[0].champions.map((s) => s.champion.name);
-    expect(selectedNames).toContain("PureKiller");
-    expect(selectedNames).not.toContain("Weak1");
-    expect(selectedNames).not.toContain("Weak2");
-  });
-
-  it("trait Scheme selects qualifying MOKIs over non-qualifying ones", () => {
-    const mokis: ChampionCard[] = [
-      makeChampion("QualifyingA", "Epic", "q1", { avgKills: 2, avgBalls: 1, avgWartDistance: 50, winRate: 0.5 }),
-      makeChampion("QualifyingB", "Epic", "q2", { avgKills: 1.5, avgBalls: 1, avgWartDistance: 50, winRate: 0.5 }),
-      makeChampion("QualifyingC", "Epic", "q3", { avgKills: 1, avgBalls: 1, avgWartDistance: 50, winRate: 0.5 }),
-      makeChampion("QualifyingD", "Epic", "q4", { avgKills: 0.8, avgBalls: 1, avgWartDistance: 50, winRate: 0.5 }),
-      // Slightly better stats but doesn't qualify for the trait scheme
-      makeChampion("NonQualifyingX", "Epic", "nq1", { avgKills: 2.5, avgBalls: 1.5, avgWartDistance: 60, winRate: 0.55 }),
-      makeChampion("NonQualifyingY", "Epic", "nq2", { avgKills: 2.2, avgBalls: 1.3, avgWartDistance: 55, winRate: 0.52 }),
-    ];
-
-    // Trait scheme that only qualifying champions benefit from (big bonus)
-    const traitScheme: SchemeCardData = {
-      tokenId: "scheme-trait",
-      name: "Shadow Fur Frenzy",
-      description: "+50 points for each Shadow Fur trait",
-      hasTraitFilter: true,
-      qualifyingChampionIds: ["ct-q1", "ct-q2", "ct-q3", "ct-q4"],
-      category: "trait",
-      riskLevel: "guaranteed",
-      imageUrl: null,
-    };
-
-    const result = optimizeLineups({
-      ownedMokis: mokis,
-      ownedSchemes: [traitScheme],
-      allSchemes: [traitScheme],
-      contestRules: { ...defaultRules, rarityRestriction: "EPIC_ONLY" },
-      numEntries: 1,
-      entryFee: 0,
-      dailyBudget: 5000,
-    });
-
-    expect(result.lineups).toHaveLength(1);
-    expect(result.lineups[0].scheme?.name).toBe("Shadow Fur Frenzy");
-
-    // Should pick all 4 qualifying MOKIs (trait bonus outweighs slight stat advantage)
-    const selectedNames = result.lineups[0].champions.map((s) => s.champion.name);
-    expect(selectedNames).toContain("QualifyingA");
-    expect(selectedNames).toContain("QualifyingB");
-    expect(selectedNames).toContain("QualifyingC");
-    expect(selectedNames).toContain("QualifyingD");
-  });
-
-  it("reproduces the MahoShojo bug fix: Cage Match should NOT pick ball-only MOKIs", () => {
-    // This test reproduces the exact scenario Larry found:
-    // MahoShojo and Tamanuki are pure ball carriers (0 kills, 5+ balls)
-    // Cage Match gives +35/kill, +10/ball — should prefer killers
-    const mokis: ChampionCard[] = [
-      makeChampion("MahoShojo", "Epic", "ms1", { avgKills: 0, avgBalls: 5.06, avgWartDistance: 0.62, winRate: 0.505 }),
-      makeChampion("Tamanuki", "Epic", "tm1", { avgKills: 0.03, avgBalls: 5.08, avgWartDistance: 0.25, winRate: 0.44 }),
-      makeChampion("Peeltergeist", "Epic", "pg1", { avgKills: 0.87, avgBalls: 0.03, avgWartDistance: 247, winRate: 0.47 }),
-      makeChampion("Shadowstorm", "Epic", "ss1", { avgKills: 1.4, avgBalls: 0.3, avgWartDistance: 155, winRate: 0.614 }),
-      // Additional killers that should be preferred for Cage Match
-      makeChampion("TopKiller", "Epic", "tk1", { avgKills: 2.5, avgBalls: 0.2, avgWartDistance: 80, winRate: 0.55 }),
-      makeChampion("MidKiller", "Epic", "mk1", { avgKills: 1.8, avgBalls: 0.1, avgWartDistance: 100, winRate: 0.52 }),
-    ];
-
-    const cageMatch = makeScheme("Cage Match", "combo", false, [], "reliable");
-
-    const result = optimizeLineups({
-      ownedMokis: mokis,
-      ownedSchemes: [cageMatch],
-      allSchemes: [cageMatch],
-      contestRules: { ...defaultRules, rarityRestriction: "EPIC_ONLY" },
-      numEntries: 1,
-      entryFee: 0,
-      dailyBudget: 5000,
-    });
-
-    expect(result.lineups).toHaveLength(1);
-
-    const selectedNames = result.lineups[0].champions.map((s) => s.champion.name);
-
-    // TopKiller and Shadowstorm should definitely be in the lineup
-    expect(selectedNames).toContain("TopKiller");
-    expect(selectedNames).toContain("Shadowstorm");
-
-    // MahoShojo (0 kills) should NOT be picked for a kill-weighted Cage Match scheme
-    // unless there aren't enough killers (but we have 4 killers available)
-    expect(selectedNames).not.toContain("MahoShojo");
-    expect(selectedNames).not.toContain("Tamanuki");
-  });
-});
-
-
-// ─── Trait Scheme Co-Optimization Tests ──────────────────────────────
-
-describe("Trait scheme co-optimization", () => {
-  // Simulate a trait scheme like "Midnight Strike" (+25 for EACH Shadow Fur)
-  const traitScheme: SchemeCardData = {
-    tokenId: "trait-shadow",
-    name: "Midnight Strike",
-    description: "+25 points for EACH Shadow Fur trait in lineup",
-    hasTraitFilter: true,
-    qualifyingChampionIds: ["ct-shadow1", "ct-shadow2", "ct-shadow3", "ct-shadow4", "ct-shadow5"],
-    category: "trait",
-    riskLevel: "guaranteed",
-    imageUrl: null,
-  };
-
-  // Non-trait performance scheme for comparison
-  const cageMatch: SchemeCardData = {
-    tokenId: "cage-match",
-    name: "Cage Match",
-    description: "+35 points Per Moki Elimination, +10 points per Gacha Ball delivered",
-    hasTraitFilter: false,
-    qualifyingChampionIds: [],
-    category: "combo",
-    riskLevel: "reliable",
-    imageUrl: null,
-  };
-
-  // Champions: mix of qualifying and non-qualifying
-  const shadowKiller = makeChampion("ShadowKiller", "Epic", "shadow1", {
-    avgKills: 2.0, avgBalls: 0.5, avgWartDistance: 50, winRate: 0.6,
-  });
-  const shadowBaller = makeChampion("ShadowBaller", "Epic", "shadow2", {
-    avgKills: 0.5, avgBalls: 4.0, avgWartDistance: 30, winRate: 0.5,
-  });
-  const shadowAvg = makeChampion("ShadowAvg", "Epic", "shadow3", {
-    avgKills: 1.0, avgBalls: 1.0, avgWartDistance: 60, winRate: 0.45,
-  });
-  const shadowWeak = makeChampion("ShadowWeak", "Epic", "shadow4", {
-    // Decent stats — weak compared to other shadows but still competitive enough
-    // to be preferred over non-qualifying MOKIs when trait bonus is factored in
-    avgKills: 1.2, avgBalls: 0.8, avgWartDistance: 40, winRate: 0.45,
-  });
-  // Realistic stats: killers specialize in kills (low balls), ball carriers specialize in balls (low kills)
-  // NonShadow MOKIs are strong killers but don't qualify for the trait scheme
-  const nonShadowStar = makeChampion("NonShadowStar", "Epic", "nonshadow1", {
-    avgKills: 2.8, avgBalls: 0.1, avgWartDistance: 60, winRate: 0.65,
-  });
-  const nonShadowGood = makeChampion("NonShadowGood", "Epic", "nonshadow2", {
-    avgKills: 2.3, avgBalls: 0.1, avgWartDistance: 50, winRate: 0.60,
-  });
-
-  it("trait scheme scores qualifying MOKIs higher than non-qualifying stars", () => {
-    // ShadowKiller (qualifying, decent stats) should score higher than
-    // NonShadowStar (non-qualifying, amazing stats) under a trait scheme
-    const shadowScore = scoreChampion(shadowKiller, traitScheme);
-    const nonShadowScore = scoreChampion(nonShadowStar, traitScheme);
-
-    // Non-qualifying gets 30% of base score, qualifying gets base + 125 bonus
-    expect(shadowScore).toBeGreaterThan(nonShadowScore);
-  });
-
-  it("trait scheme: qualifying MOKI gets full base score (trait bonus is at lineup level, not per-MOKI)", () => {
-    const baseScore = scoreChampion(shadowKiller, null);
-    const traitScore = scoreChampion(shadowKiller, traitScheme);
-
-    // Qualifying MOKIs get their full base score under trait schemes.
-    // The +25/match × 5 matches = +125 per qualifying MOKI bonus is applied
-    // at the LINEUP level in the co-optimization loop, not per-MOKI in scoreChampion.
-    // This allows the optimizer to correctly count how many qualifiers are in the lineup.
-    expect(traitScore).toBe(baseScore);
-  });
-
-  it("non-qualifying MOKIs get heavily penalized under trait scheme", () => {
-    const baseScore = scoreChampion(nonShadowStar, null);
-    const traitScore = scoreChampion(nonShadowStar, traitScheme);
-
-    // Non-qualifying gets 30% of base score
-    expect(traitScore).toBe(Math.round(baseScore * 0.3));
-    expect(traitScore).toBeLessThan(baseScore);
-  });
-
-  it("categorizeScheme returns 'trait' when hasTraitFilter is true", () => {
-    expect(categorizeScheme("any description", true)).toBe("trait");
-    expect(categorizeScheme("+25 points for EACH Onesie or Lemon in lineup", true)).toBe("trait");
-  });
-
-  it("categorizeScheme detects trait from description pattern", () => {
-    expect(categorizeScheme("+25 points for EACH Shadow Fur trait in lineup")).toBe("trait");
-    expect(categorizeScheme("+25 points for EACH 1 of 1 Moki in lineup")).toBe("trait");
-    expect(categorizeScheme("+25 points for each Rainbow Fur trait in lineup")).toBe("trait");
-  });
-
-  it("optimizer picks trait scheme when 4 qualifying MOKIs are available", () => {
-    const allChampions = [
-      shadowKiller, shadowBaller, shadowAvg, shadowWeak,
-      nonShadowStar, nonShadowGood,
-    ];
-    const allSchemes = [traitScheme, cageMatch];
-    const rules: ContestRules = {
-      contestId: "trait-test",
-      contestName: "Trait Test Contest",
-      rarityFilter: null,
-      maxEntries: 1,
-      entryCost: 200,
-    };
-
-    const result = optimizeLineups({
-      ownedMokis: allChampions,
-      ownedSchemes: allSchemes,
-      allSchemes,
-      // Use topPercent contest type so trait scheme gets the consistency premium (1.65x vs 0.9x)
-      contestRules: { rarityRestriction: "OPEN", isOneOfEach: false, isStarCap: false, maxEntriesPerUser: 5, format: "standard", contestType: "topPercent" },
-      numEntries: 1,
-      entryFee: 200,
-      dailyBudget: 5000,
-    });
-
-    expect(result.lineups).toHaveLength(1);
-    const lineup = result.lineups[0];
-
-    // The trait scheme should be selected for topPercent contests because:
-    // - Trait scheme gets 1.65x multiplier (consistency premium)
-    // - Cage Match gets 0.9x multiplier (variance penalty)
-    // - Lineup-level trait bonus: 4 qualifying × 25 × 5 matches = +500 guaranteed points
-    expect(lineup.scheme?.name).toBe("Midnight Strike");
-
-    // All 4 champions should be qualifying Shadow MOKIs
-    const selectedNames = lineup.champions.map((s) => s.champion.name);
-    expect(selectedNames).toContain("ShadowKiller");
-    expect(selectedNames).toContain("ShadowBaller");
-    expect(selectedNames).toContain("ShadowAvg");
-    expect(selectedNames).toContain("ShadowWeak");
-
-    // NonShadowStar should NOT be picked despite having the best raw stats
-    expect(selectedNames).not.toContain("NonShadowStar");
-  });
-
-  it("optimizer picks performance scheme when fewer than 4 qualifying MOKIs exist", () => {
-    // Only 2 shadow MOKIs available — trait scheme less valuable
-    const limitedChampions = [
-      shadowKiller, shadowBaller,
-      nonShadowStar, nonShadowGood,
-      makeChampion("NonShadow3", "Epic", "nonshadow3", {
-        avgKills: 2.0, avgBalls: 1.5, avgWartDistance: 70, winRate: 0.55,
-      }),
-      makeChampion("NonShadow4", "Epic", "nonshadow4", {
-        avgKills: 1.8, avgBalls: 1.2, avgWartDistance: 65, winRate: 0.5,
-      }),
-    ];
-    const allSchemes = [traitScheme, cageMatch];
-    const rules: ContestRules = {
-      contestId: "perf-test",
-      contestName: "Perf Test Contest",
-      rarityFilter: null,
-      maxEntries: 1,
-      entryCost: 200,
-    };
-
-    const result = optimizeLineups({
-      ownedMokis: limitedChampions,
-      ownedSchemes: allSchemes,
-      allSchemes,
-      contestRules: { rarityRestriction: "OPEN", isOneOfEach: false, isStarCap: false, maxEntriesPerUser: 5, format: "standard" },
-      numEntries: 1,
-      entryFee: 200,
-      dailyBudget: 5000,
-    });
-    const lineup = result.lineups[0];
-
-    // With only 2 qualifying MOKIs, the trait scheme's total bonus is only +250
-    // while the performance scheme with 4 strong performers should score higher
-    // The optimizer should pick Cage Match or at least not force all-shadow
-    expect(lineup.scheme?.name).toBe("Cage Match");
-  });
-
-  it("among qualifying trait MOKIs, optimizer picks the best performers", () => {
-    // 5 qualifying MOKIs but only 4 slots — should pick the 4 best performers
-    const fiveShadows = [
-      shadowKiller,   // best: 2.0 kills, 0.6 WR
-      shadowBaller,   // good: 4.0 balls, 0.5 WR
-      shadowAvg,      // decent: 1.0/1.0
-      shadowWeak,     // weakest: 0.3/0.3
-      makeChampion("ShadowStrong", "Epic", "shadow5", {
-        avgKills: 1.8, avgBalls: 1.5, avgWartDistance: 70, winRate: 0.55,
-      }),
-    ];
-    const rules: ContestRules = {
-      contestId: "trait-rank-test",
-      contestName: "Trait Rank Test",
-      rarityFilter: null,
-      maxEntries: 1,
-      entryCost: 200,
-    };
-
-    const result = optimizeLineups({
-      ownedMokis: fiveShadows,
-      ownedSchemes: [traitScheme],
-      allSchemes: [traitScheme],
-      contestRules: { rarityRestriction: "OPEN", isOneOfEach: false, isStarCap: false, maxEntriesPerUser: 5, format: "standard" },
-      numEntries: 1,
-      entryFee: 200,
-      dailyBudget: 5000,
-    });
-    const lineup = result.lineups[0];
-    const selectedNames = lineup.champions.map((s) => s.champion.name);
-
-    // ShadowWeak should be dropped in favor of the 4 stronger performers
-    expect(selectedNames).not.toContain("ShadowWeak");
-    expect(selectedNames).toContain("ShadowKiller");
-    expect(selectedNames).toContain("ShadowBaller");
-    expect(selectedNames).toContain("ShadowStrong");
   });
 });

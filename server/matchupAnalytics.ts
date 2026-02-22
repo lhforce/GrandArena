@@ -49,7 +49,7 @@ export interface ChampionMatchPerformance {
   eliminationWins: number;
   wartWins: number;
   gachaWins: number;
-  // Per-match scoring estimate (V4: 85*kills + 40*balls + wart + 200*win)
+  // Per-match scoring estimate (V4: 85*kills + 40*balls + 1.257*wart + 200*win)
   avgEstimatedScore: number;
 }
 
@@ -288,9 +288,9 @@ export async function getChampionPerformance(
   const avgWart = Number(row.avgWart) || 0;
   const winRate = totalMatches > 0 ? wins / totalMatches : 0;
 
-  // V4 scoring estimate: 85*kills + 40*balls + wart + 200*winRate
+  // V4 scoring estimate: 85*kills + 40*balls + 1.257*wart + 200*winRate
   const avgEstimatedScore =
-    Math.round((85 * avgKills + 40 * avgBalls + avgWart + 200 * winRate) * 100) / 100;
+    Math.round((85 * avgKills + 40 * avgBalls + 1.257 * avgWart + 200 * winRate) * 100) / 100;
 
   return {
     championTokenId,
@@ -397,7 +397,7 @@ export async function getAllChampionPerformance(
       gachaWins: 0,
       avgEstimatedScore:
         Math.round(
-          (85 * avgKills + 40 * avgBalls + avgWart + 200 * winRate) * 100
+          (85 * avgKills + 40 * avgBalls + 1.257 * avgWart + 200 * winRate) * 100
         ) / 100,
     };
   });

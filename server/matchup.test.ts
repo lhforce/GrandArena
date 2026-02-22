@@ -217,18 +217,18 @@ describe("Matchup Analytics Calculations", () => {
   });
 
   it("should calculate V4 score estimate correctly", () => {
-    // V4: 85*kills + 40*balls + wart + 200*winRate
+    // V4: 85*kills + 40*balls + 1.257*wart + 200*winRate
     const avgKills = 1.2;
     const avgBalls = 0.1;
     const avgWart = 282.36;
     const winRate = 0.65;
 
     const score =
-      Math.round((85 * avgKills + 40 * avgBalls + avgWart + 200 * winRate) * 100) / 100;
+      Math.round((85 * avgKills + 40 * avgBalls + 1.257 * avgWart + 200 * winRate) * 100) / 100;
 
-    // 85*1.2 = 102, 40*0.1 = 4, 282.36, 200*0.65 = 130
-    // Total = 102 + 4 + 282.36 + 130 = 518.36
-    expect(score).toBeCloseTo(518.36, 1);
+    // 85*1.2 = 102, 40*0.1 = 4, 1.257*282.36 = 354.93, 200*0.65 = 130
+    // Total = 102 + 4 + 354.93 + 130 = 590.93
+    expect(score).toBeCloseTo(590.93, 1);
   });
 
   it("should handle zero matches gracefully", () => {
