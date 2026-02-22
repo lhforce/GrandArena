@@ -88,9 +88,8 @@ describe("scoreChampion", () => {
   it("scores a Basic champion with no scheme", () => {
     const champ = makeChampion("TestMoki", "Basic", "1");
     const score = scoreChampion(champ, null);
-    // Base: (2*85 + 1*40 + 50*1.257 + 0.3*200) * 1.0 = 170+40+62.85+60 = 332.85 → 333
-    // Note: multiplier applied per-term, so actual = Math.round(170+40+62.85+60) = 333
-    expect(score).toBe(333);
+    // Base: (2*80 + 1*50 + 50*0.5625 + 0.3*300) * 1.0 = 160+50+28.125+90 = 328.125 → 328
+    expect(score).toBe(328);
   });
 
   it("applies rarity multiplier for Legendary", () => {
@@ -99,22 +98,22 @@ describe("scoreChampion", () => {
     const basicScore = scoreChampion(basic, null);
     const legendaryScore = scoreChampion(legendary, null);
     // Legendary should be 1.75x the Basic score (each term * 1.75, then rounded)
-    // (2*85*1.75 + 1*40*1.75 + 50*1.257*1.75 + 0.3*200*1.75) = 297.5+70+109.9875+105 = 582.4875 → 582
-    expect(legendaryScore).toBe(582);
+    // (2*80*1.75 + 1*50*1.75 + 50*0.5625*1.75 + 0.3*300*1.75) = 280+87.5+49.21875+157.5 = 574.21875 → 574
+    expect(legendaryScore).toBe(574);
   });
 
   it("applies rarity multiplier for Rare", () => {
     const champ = makeChampion("RareMoki", "Rare", "3");
     const score = scoreChampion(champ, null);
-    // (2*85*1.25 + 1*40*1.25 + 50*1.257*1.25 + 0.3*200*1.25) = 212.5+50+78.5625+75 = 416.0625 → 416
-    expect(score).toBe(416);
+    // (2*80*1.25 + 1*50*1.25 + 50*0.5625*1.25 + 0.3*300*1.25) = 200+62.5+35.15625+112.5 = 410.15625 → 410
+    expect(score).toBe(410);
   });
 
   it("applies rarity multiplier for Epic", () => {
     const champ = makeChampion("EpicMoki", "Epic", "4");
     const score = scoreChampion(champ, null);
-    // (2*85*1.5 + 1*40*1.5 + 50*1.257*1.5 + 0.3*200*1.5) = 255+60+94.275+90 = 499.275 → 499
-    expect(score).toBe(499);
+    // (2*80*1.5 + 1*50*1.5 + 50*0.5625*1.5 + 0.3*300*1.5) = 240+75+42.1875+135 = 492.1875 → 492
+    expect(score).toBe(492);
   });
 
   it("adds scheme bonus for kills category", () => {

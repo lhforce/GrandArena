@@ -245,9 +245,9 @@ function estimateWinRate(
   if (!champPerf) return 40; // We have no data on our champ but opponent has data
   if (!oppPerf) return 60; // We have data, opponent doesn't
 
-  // Simple estimation: compare win rates and score potential (V4: 85*kills + 40*balls + 1.257*wart)
-  const champScore = champPerf.avgKills * 85 + champPerf.avgBalls * 40 + champPerf.avgWartDistance * 1.257;
-  const oppScore = oppPerf.avgKills * 85 + oppPerf.avgBalls * 40 + oppPerf.avgWartDistance * 1.257;
+  // Official Season 1 scoring: kills*80 + balls*50 + wart*0.5625
+  const champScore = champPerf.avgKills * 80 + champPerf.avgBalls * 50 + champPerf.avgWartDistance * 0.5625;
+  const oppScore = oppPerf.avgKills * 80 + oppPerf.avgBalls * 50 + oppPerf.avgWartDistance * 0.5625;
 
   // Blend win rate comparison with score comparison
   const winRateDiff = champPerf.winRate - oppPerf.winRate; // -1 to 1

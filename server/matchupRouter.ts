@@ -17,6 +17,7 @@ import {
   getIncrementalStatus,
   startMatchScrapeCron,
   stopMatchScrapeCron,
+  runSeason1Scrape,
 } from "./matchScraper";
 import {
   getHeadToHead,
@@ -45,6 +46,14 @@ export const matchupRouter = router({
       console.error("[MatchupRouter] Scrape failed:", err)
     );
     return { started: true, message: "Match history scrape started in background" };
+  }),
+
+  /**
+   * Run Season 1 scrape: clears all existing match data and re-scrapes
+   * all 179 champions with the official scoring formula.
+   */
+  runSeason1Scrape: publicProcedure.mutation(async () => {
+    return runSeason1Scrape();
   }),
 
   /**

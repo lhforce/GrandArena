@@ -8,12 +8,19 @@
  */
 
 import { eq, sql } from "drizzle-orm";
+import { readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { getDb } from "./db";
 import {
   matchHistory,
   matchPlayerStats,
   matchScrapeProgress,
 } from "../drizzle/schema";
+
+// ESM-compatible __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const GATRACKER_BASE = "https://botto-n8n-botto.eelnl8.easypanel.host/webhook";
 const MATCHES_PER_PAGE = 100;
@@ -153,14 +160,45 @@ async function fetchMokiMatches(
   }
 }
 
+// ─── Official Scoring Formula (Season 1) ─────────────────────────
+// Source: https://x.com/Moku_HQ/status/2021035700108358000 (Feb 10, 2026)
+const SCORE_PER_KILL = 80;     // Eliminations: 80 pts each
+const SCORE_PER_BALL = 50;     // Deposits: 50 pts each
+const SCORE_PER_WART = 0.5625; // Wart distance: 45 pts per 80 units
+const SCORE_WIN_BONUS = 300;   // Victory: 300 pts
+
+function calculateMatchScore(
+  kills: number,
+  balls: number,
+  wartDistance: number,
+  isWinner: boolean
+): number {
+  return (
+    kills * SCORE_PER_KILL +
+    balls * SCORE_PER_BALL +
+    wartDistance * SCORE_PER_WART +
+    (isWinner ? SCORE_WIN_BONUS : 0)
+  );
+}
+
+// ─── Season 1 Date Filter ─────────────────────────────────────────
+// Only store matches from Season 1 start (Feb 19, 2026) onwards
+const SEASON_1_START = new Date("2026-02-19T00:00:00.000Z");
+
+function isAfterSeason1Start(matchDate: string | null | undefined): boolean {
+  if (!matchDate) return false;
+  return new Date(matchDate) >= SEASON_1_START;
+}
+
 // ─── Database Helpers ──────────────────────────────────────────────
 
-async function storeMatchData(entries: GAMatchEntry[]): Promise<{ matchesInserted: number; statsInserted: number }> {
+async function storeMatchData(entries: GAMatchEntry[]): Promise<{ matchesInserted: number; statsInserted: number; hitPreSeason: boolean }> {
   const db = await getDb();
-  if (!db) return { matchesInserted: 0, statsInserted: 0 };
+  if (!db) return { matchesInserted: 0, statsInserted: 0, hitPreSeason: false };
 
   let matchesInserted = 0;
   let statsInserted = 0;
+  let hitPreSeason = false;
 
   for (const entry of entries) {
     if (entry.isBye || !entry.match) continue;
@@ -168,6 +206,13 @@ async function storeMatchData(entries: GAMatchEntry[]): Promise<{ matchesInserte
     const match = entry.match;
     const result = match.result;
     if (!result) continue;
+
+    // Skip pre-Season 1 matches (before Feb 19, 2026)
+    const matchDate = entry.matchDate || match.matchDate;
+    if (!isAfterSeason1Start(matchDate)) {
+      hitPreSeason = true;
+      continue;
+    }
 
     // Insert match (ignore duplicates)
     try {
@@ -214,6 +259,12 @@ async function storeMatchData(entries: GAMatchEntry[]): Promise<{ matchesInserte
             wartDistance: String(playerResult?.wartDistance ?? 0),
             isWinner,
             matchDate: entry.matchDate || match.matchDate || null,
+            score: String(calculateMatchScore(
+              playerResult?.eliminations ?? 0,
+              playerResult?.deposits ?? 0,
+              playerResult?.wartDistance ?? 0,
+              isWinner
+            )),
           })
           .onDuplicateKeyUpdate({
             set: { matchId: entry.matchId, championTokenId: player.tokenId },
@@ -230,7 +281,7 @@ async function storeMatchData(entries: GAMatchEntry[]): Promise<{ matchesInserte
     }
   }
 
-  return { matchesInserted, statsInserted };
+  return { matchesInserted, statsInserted, hitPreSeason };
 }
 
 // ─── Main Scraper ──────────────────────────────────────────────────
@@ -291,11 +342,17 @@ async function scrapeChampionMatches(
     } else {
       totalPages = response.pagination.pages;
       totalAvailable = response.pagination.total;
-      const { matchesInserted, statsInserted } = await storeMatchData(
+      const { matchesInserted, statsInserted, hitPreSeason } = await storeMatchData(
         response.data
       );
       totalMatchesStored += matchesInserted;
       totalStatsStored += statsInserted;
+
+      // Stop paginating once we've hit pre-Season 1 matches
+      if (hitPreSeason) {
+        console.log(`[MatchScraper] ${championName}: reached pre-Season 1 data at page ${page}, stopping early`);
+        break;
+      }
     }
 
     // Update progress
@@ -337,11 +394,42 @@ async function scrapeChampionMatches(
 }
 
 /**
- * Get all 179 champion token IDs from the GATracker leaderboard API.
+ * Get all 179 champion token IDs from game-data.json (local fallback).
+ * This is the primary source since the GATracker leaderboard API is unreliable.
+ */
+function fetchChampionListFromGameData(): Array<{ championTokenId: number; name: string }> {
+  try {
+    const gameDataPath = resolve(__dirname, "../client/public/game-data.json");
+    const raw = JSON.parse(readFileSync(gameDataPath, "utf8"));
+    const champions: Array<{ championTokenId: number; name: string }> = [];
+    for (const champ of (raw as any).champions || []) {
+      const tokenId = Number(champ.championTokenId);
+      if (tokenId && !isNaN(tokenId)) {
+        champions.push({ championTokenId: tokenId, name: champ.name || `Champion #${tokenId}` });
+      }
+    }
+    console.log(`[MatchScraper] Loaded ${champions.length} champions from game-data.json`);
+    return champions;
+  } catch (err) {
+    console.error("[MatchScraper] Failed to load game-data.json:", err);
+    return [];
+  }
+}
+
+/**
+ * Get all 179 champion token IDs — uses local game-data.json first,
+ * falls back to GATracker leaderboard API if local data unavailable.
  */
 async function fetchChampionList(): Promise<
   Array<{ championTokenId: number; name: string }>
 > {
+  // Primary: use local game-data.json (always available, no API rate limits)
+  const localChampions = fetchChampionListFromGameData();
+  if (localChampions.length > 0) {
+    return localChampions;
+  }
+
+  // Fallback: try GATracker leaderboard API
   try {
     const resp = await fetch(`${GATRACKER_BASE}/leaderboardSeason1`, {
       headers: GATRACKER_HEADERS,
@@ -359,14 +447,12 @@ async function fetchChampionList(): Promise<
       entries = raw.data || [];
     }
 
-    // The leaderboard only has champion_id, not names
-    // We'll get names from the first match response for each champion
     return entries.map((e: any) => ({
       championTokenId: Number(e.champion_id),
-      name: `Champion #${e.champion_id}`, // Will be updated from match data
+      name: `Champion #${e.champion_id}`,
     }));
   } catch (err) {
-    console.error("[MatchScraper] Failed to fetch champion list:", err);
+    console.error("[MatchScraper] Failed to fetch champion list from API:", err);
     return [];
   }
 }
@@ -459,6 +545,38 @@ export async function runFullMatchScrape(): Promise<void> {
  */
 export function stopMatchScrape(): void {
   scrapeAborted = true;
+}
+
+/**
+ * Run Season 1 scrape: clears all existing match data and re-scrapes
+ * all champions with the official scoring formula applied.
+ * This ensures all records have the correct `score` field.
+ */
+export async function runSeason1Scrape(): Promise<{
+  started: boolean;
+  message: string;
+}> {
+  if (scrapeRunning) {
+    return { started: false, message: "Scrape already in progress" };
+  }
+
+  const db = await getDb();
+  if (!db) return { started: false, message: "Database not available" };
+
+  // Clear all existing match data
+  console.log("[MatchScraper] Clearing existing match data for Season 1 re-scrape...");
+  await db.execute(sql`DELETE FROM match_player_stats`);
+  await db.execute(sql`DELETE FROM match_history`);
+  // Reset all scrape progress so all champions get re-scraped
+  await db.execute(sql`UPDATE match_scrape_progress SET status = 'pending', pagesScraped = 0, matchesScraped = 0`);
+  console.log("[MatchScraper] Cleared. Starting Season 1 re-scrape...");
+
+  // Run full scrape in background
+  runFullMatchScrape().catch((err) =>
+    console.error("[MatchScraper] Season 1 scrape failed:", err)
+  );
+
+  return { started: true, message: "Season 1 re-scrape started — clearing old data and re-scraping all 179 champions with official scoring" };
 }
 
 /**

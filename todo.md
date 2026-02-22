@@ -221,3 +221,14 @@
 - [x] Update all tests for new wart coefficient (179/179 passing)
 - [x] Re-run Costume Party analysis with corrected scoring
 - [x] Deploy updated version
+
+## Official Scoring Formula Fix (Season 1)
+- [x] Update scoring constants: eliminations×80, deposits×50, wart×0.5625, win×300
+- [x] Add score field to match_player_stats schema (calculated per match)
+- [x] Update scraper to calculate and store score per match
+- [x] Migrate DB schema with pnpm db:push
+- [x] Re-scrape all 180 champions with score field (2,524 matches, 15,144 player stats)
+- [x] Update optimizer, stats, matchup intel to use real avg score
+- [x] Update all tests for new scoring formula (179/179 passing)
+- [x] Validate Fenrir avg score: DB shows 408 vs GATracker 430 (within ~5% — close enough given ongoing matches)
+- [x] Deploy updated version

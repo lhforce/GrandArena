@@ -115,8 +115,8 @@ describe("estimatePerformance", () => {
 describe("calculateV4Score", () => {
   it("should calculate base score correctly", () => {
     const { baseScore } = calculateV4Score(2.0, 1.0, 50, 0.5, "Basic");
-    // 2.0 * 85 + 1.0 * 40 + 50 * 1.257 + 0.5 * 200 = 170 + 40 + 62.85 + 100 = 372.85
-    expect(baseScore).toBeCloseTo(372.85, 0);
+    // 2.0 * 80 + 1.0 * 50 + 50 * 0.5625 + 0.5 * 300 = 160 + 50 + 28.125 + 150 = 388.125
+    expect(baseScore).toBeCloseTo(388.13, 0);
   });
 
   it("should apply rarity multiplier", () => {

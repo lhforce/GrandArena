@@ -228,10 +228,11 @@ export function scoreChampion(
   const multiplier = RARITY_MULTIPLIER[champion.rarity] ?? 1.0;
   
   // Base score from performance stats (weighted by V4 scoring)
-  const killScore = (champion.avgKills ?? 2) * 85 * multiplier;
-  const ballScore = (champion.avgBalls ?? 1) * 40 * multiplier;
-  const wartScore = (champion.avgWartDistance ?? 50) * 1.257 * multiplier; // Validated against GATracker
-  const winBonus = (champion.winRate ?? 0.3) * 200 * multiplier;
+  // Official Season 1 scoring: kills*80 + balls*50 + wart*0.5625 + win*300
+  const killScore = (champion.avgKills ?? 2) * 80 * multiplier;
+  const ballScore = (champion.avgBalls ?? 1) * 50 * multiplier;
+  const wartScore = (champion.avgWartDistance ?? 50) * 0.5625 * multiplier;
+  const winBonus = (champion.winRate ?? 0.3) * 300 * multiplier;
   
   let baseScore = killScore + ballScore + wartScore + winBonus;
 
@@ -245,16 +246,16 @@ export function scoreChampion(
       switch (cat) {
         case "kills":
           // Kills-focused schemes boost kill-heavy champions
-          baseScore += (champion.avgKills ?? 2) * 85 * 0.5 * multiplier;
+          baseScore += (champion.avgKills ?? 2) * 80 * 0.5 * multiplier;
           break;
         case "balls":
-          baseScore += (champion.avgBalls ?? 1) * 40 * 0.5 * multiplier;
+          baseScore += (champion.avgBalls ?? 1) * 50 * 0.5 * multiplier;
           break;
         case "wart":
-          baseScore += (champion.avgWartDistance ?? 50) * 0.3 * multiplier;
+          baseScore += (champion.avgWartDistance ?? 50) * 0.5625 * 0.5 * multiplier;
           break;
         case "win":
-          baseScore += (champion.winRate ?? 0.3) * 200 * 0.5 * multiplier;
+          baseScore += (champion.winRate ?? 0.3) * 300 * 0.5 * multiplier;
           break;
         case "trait":
           // Trait schemes give flat bonus per qualifying champion
