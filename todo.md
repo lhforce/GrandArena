@@ -274,3 +274,7 @@
 - [x] Fix scoreChampion to properly weight Scheme-specific actions (kills for kill schemes, balls for ball schemes)
 - [x] Update tests for new co-optimization logic (6 new tests: kill-heavy, ball-heavy, multi-scheme, combo, trait, MahoShojo bug fix)
 - [x] Verify end-to-end with TS checks passing (197 tests, 0 TS errors)
+
+## Bug Fixes Round 11
+- [x] Fix duplicate AI identification jobs running concurrently — stale DB records from server restart; added startup cleanup in cardIdentifier.ts + _core/index.ts
+- [x] Validate Cage Match optimizer picks against GATracker top killers — confirmed our data matches; new optimizer should pick Mokington/Dheu/Mokuna/Low Tier Phenom for Epic Cage Match

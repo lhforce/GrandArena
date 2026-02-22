@@ -23,6 +23,35 @@ export function isIdentificationRunning(): boolean {
   return identificationRunning;
 }
 
+/**
+ * Clean up stale "running" AI identification jobs on server startup.
+ * If the server restarts while a job is running, the in-memory flag resets
+ * but the DB record stays "running" forever. This marks them as failed.
+ */
+export async function cleanupStaleIdentificationJobs(): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  
+  const result = await db.update(scrapeJobs)
+    .set({
+      status: "failed",
+      errorMessage: "Stale job: server restarted while running",
+      completedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(scrapeJobs.status, "running"),
+        eq(scrapeJobs.jobType, "ai_identification")
+      )
+    );
+  
+  const cleaned = (result as any)[0]?.affectedRows ?? 0;
+  if (cleaned > 0) {
+    console.log(`[CardIdentifier] Cleaned up ${cleaned} stale AI identification job(s) from previous server session`);
+  }
+  return cleaned;
+}
+
 // ─── Types ──────────────────────────────────────────────────────────
 interface IdentifiedCard {
   name: string;
