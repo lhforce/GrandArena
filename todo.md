@@ -193,3 +193,22 @@
 - [x] Build SwapAdvisor UI page with lineup input and swap recommendations
 - [x] Add SwapAdvisor to sidebar navigation
 - [x] Write tests for swap advisor logic
+
+## Hourly Match History Cron Job
+- [x] Add incremental scraping mode to matchScraper (stop when hitting known matchIds)
+- [x] Track newestMatchId per champion in matchScrapeProgress table
+- [x] Build runIncrementalMatchScrape() function that only fetches new matches
+- [x] Build hourly cron scheduler using setInterval (runs every hour)
+- [x] Wire cron job startup into server/_core/index.ts
+- [x] Add cron job status to Dashboard (last run, next run, matches added)
+- [x] Add tRPC procedures for cron status and manual trigger
+- [x] Write tests for incremental scraping logic
+
+## Auto-Populate Swap Advisor from Contest Entries
+- [x] Investigate GA contest API for opponent lineup data (leaderboard/matchups endpoints)
+- [x] User's built lineups already saved to savedLineups table via Lineup Builder
+- [x] Build opponent lineup detection from leaderboard_entries (AI-identified champions)
+- [x] Redesign Swap Advisor to auto-load user's active contest entries
+- [x] Show contest picker → entry picker → auto-populated matchup analysis
+- [x] Eliminate manual MOKI input (keep as fallback option)
+- [x] Write tests for auto-populate logic

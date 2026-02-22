@@ -1,9 +1,10 @@
 /**
  * Swap Advisor — Post-entry lineup optimization.
  *
- * After entering a contest, the user inputs their 4 MOKIs and the opponent's 4 MOKIs.
- * The engine analyzes H2H matchup data and recommends swaps from the user's bench
- * to improve win probability.
+ * Two modes:
+ * 1. Contest Mode (auto): Pick a contest you've entered → auto-loads your lineup →
+ *    browse opponents from leaderboard → one-click swap analysis.
+ * 2. Manual Mode: Enter 4+4 MOKIs by hand for quick ad-hoc checks.
  */
 
 import { useState, useMemo, useEffect } from "react";
@@ -29,6 +30,11 @@ import {
   ChevronRight,
   Sparkles,
   Info,
+  Trophy,
+  Users,
+  Zap,
+  ListChecks,
+  PenLine,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { GameData } from "@/lib/types";
@@ -39,6 +45,8 @@ interface ChampionSlot {
   tokenId: number | null;
   name: string;
 }
+
+type AdvisorMode = "contest" | "manual";
 
 // ─── Champion Search (reusable autocomplete from game data) ────────
 
@@ -58,18 +66,20 @@ function ChampionPicker({
   const [query, setQuery] = useState(value.name);
   const [showResults, setShowResults] = useState(false);
 
-  // Also search the match database for champions
   const dbSearch = trpc.matchup.searchChampions.useQuery(
     { query, limit: 10 },
     { enabled: query.length >= 2 }
   );
 
-  // Combine game data + DB results for comprehensive search
   const results = useMemo(() => {
     const seen = new Set<number>();
-    const combined: Array<{ tokenId: number; name: string; championClass: string; source: string }> = [];
+    const combined: Array<{
+      tokenId: number;
+      name: string;
+      championClass: string;
+      source: string;
+    }> = [];
 
-    // DB results first (they have match data)
     if (dbSearch.data) {
       for (const c of dbSearch.data) {
         if (!seen.has(c.championTokenId)) {
@@ -84,7 +94,6 @@ function ChampionPicker({
       }
     }
 
-    // Game data fallback
     if (gameData?.champions && query.length >= 2) {
       const q = query.toLowerCase();
       for (const c of gameData.champions) {
@@ -226,13 +235,11 @@ function MatchupSlotCard({
       </div>
 
       <div className="flex items-center gap-2">
-        {/* Your champion */}
         <div className="flex-1 text-right">
           <p className="text-sm font-semibold truncate">{slot.yourChampionName}</p>
           <p className="text-[10px] text-muted-foreground">{slot.yourChampionClass}</p>
         </div>
 
-        {/* VS indicator with win rate */}
         <div className="flex flex-col items-center px-2">
           <div
             className={`text-lg font-bold tabular-nums ${
@@ -248,7 +255,6 @@ function MatchupSlotCard({
           </span>
         </div>
 
-        {/* Opponent */}
         <div className="flex-1">
           <p className="text-sm font-semibold truncate">{slot.opponentChampionName}</p>
           <p className="text-[10px] text-muted-foreground">{slot.opponentChampionClass}</p>
@@ -300,34 +306,37 @@ function SwapCard({
         </div>
 
         <div className="flex items-center gap-3 mb-3">
-          {/* Current */}
           <div className="flex-1 p-2 rounded bg-destructive/10 border border-destructive/20">
             <p className="text-xs text-muted-foreground">Current</p>
             <p className="text-sm font-semibold">{rec.currentChampionName}</p>
             <p className="text-xs text-destructive">
               {rec.currentWinRate.toFixed(1)}% WR
               {rec.currentH2hMatches > 0 && (
-                <span className="text-muted-foreground"> · {rec.currentH2hMatches} matches</span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {rec.currentH2hMatches} matches
+                </span>
               )}
             </p>
           </div>
 
           <ChevronRight className="w-5 h-5 text-gold shrink-0" />
 
-          {/* Suggested */}
           <div className="flex-1 p-2 rounded bg-emerald-500/10 border border-emerald-500/20">
             <p className="text-xs text-muted-foreground">Swap In</p>
             <p className="text-sm font-semibold">{rec.suggestedChampionName}</p>
             <p className="text-xs text-emerald-400">
               {rec.suggestedWinRate.toFixed(1)}% WR
               {rec.suggestedH2hMatches > 0 && (
-                <span className="text-muted-foreground"> · {rec.suggestedH2hMatches} matches</span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {rec.suggestedH2hMatches} matches
+                </span>
               )}
             </p>
           </div>
         </div>
 
-        {/* Improvement */}
         <div className="flex items-center gap-2 mb-2">
           <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
           <span className="text-sm font-bold text-emerald-400">
@@ -341,21 +350,579 @@ function SwapCard({
   );
 }
 
-// ─── Main Page ─────────────────────────────────────────────────────
+// ─── Analysis Results Display ──────────────────────────────────────
 
-export default function SwapAdvisor() {
+function AnalysisResults({
+  result,
+  contestName,
+  entryNumber,
+}: {
+  result: {
+    currentMatchups: Array<{
+      position: number;
+      yourChampionName: string;
+      opponentChampionName: string;
+      h2hWinRate: number;
+      h2hMatches: number;
+      h2hWins: number;
+      h2hLosses: number;
+      confidence: string;
+      yourChampionClass: string;
+      opponentChampionClass: string;
+    }>;
+    currentOverallWinRate: number;
+    recommendations: Array<{
+      position: number;
+      currentChampionName: string;
+      currentWinRate: number;
+      currentH2hMatches: number;
+      suggestedChampionName: string;
+      suggestedChampionClass: string;
+      suggestedWinRate: number;
+      suggestedH2hMatches: number;
+      winRateImprovement: number;
+      reason: string;
+      confidence: string;
+    }>;
+    bestPossibleWinRate: number;
+    improvementPotential: number;
+    dataQuality: {
+      matchupsWithData: number;
+      matchupsWithoutData: number;
+      totalH2hMatchesUsed: number;
+    };
+  };
+  contestName?: string;
+  entryNumber?: number;
+}) {
+  return (
+    <div className="space-y-4 sm:space-y-6">
+      {/* Context banner */}
+      {contestName && (
+        <div className="flex items-center gap-2 text-xs text-teal bg-teal/10 p-2.5 rounded-lg border border-teal/20">
+          <Trophy className="w-3.5 h-3.5 shrink-0" />
+          <span>
+            Analyzing <span className="font-semibold">{contestName}</span>
+            {entryNumber ? ` · Entry #${entryNumber}` : ""}
+          </span>
+        </div>
+      )}
+
+      {/* Overall Summary */}
+      <Card className="border-border/50">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-gold" />
+            Analysis Summary
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            <div className="p-3 rounded-lg bg-secondary/30 text-center">
+              <p className="text-[10px] text-muted-foreground mb-1">Current Win Rate</p>
+              <p
+                className={`text-xl font-bold tabular-nums ${
+                  result.currentOverallWinRate >= 55
+                    ? "text-emerald-400"
+                    : result.currentOverallWinRate < 45
+                      ? "text-destructive"
+                      : "text-foreground"
+                }`}
+              >
+                {result.currentOverallWinRate.toFixed(1)}%
+              </p>
+            </div>
+            <div className="p-3 rounded-lg bg-secondary/30 text-center">
+              <p className="text-[10px] text-muted-foreground mb-1">Best Possible</p>
+              <p className="text-xl font-bold tabular-nums text-emerald-400">
+                {result.bestPossibleWinRate.toFixed(1)}%
+              </p>
+            </div>
+            <div className="p-3 rounded-lg bg-secondary/30 text-center">
+              <p className="text-[10px] text-muted-foreground mb-1">Improvement</p>
+              <p
+                className={`text-xl font-bold tabular-nums ${
+                  result.improvementPotential > 0 ? "text-gold" : "text-muted-foreground"
+                }`}
+              >
+                {result.improvementPotential > 0 ? "+" : ""}
+                {result.improvementPotential.toFixed(1)}%
+              </p>
+            </div>
+            <div className="p-3 rounded-lg bg-secondary/30 text-center">
+              <p className="text-[10px] text-muted-foreground mb-1">Data Quality</p>
+              <p className="text-xl font-bold tabular-nums">
+                {result.dataQuality.matchupsWithData}/4
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                {result.dataQuality.totalH2hMatchesUsed} H2H matches
+              </p>
+            </div>
+          </div>
+
+          {result.dataQuality.matchupsWithoutData > 0 && (
+            <div className="flex items-center gap-2 text-xs text-orange-400 bg-orange-500/10 p-2 rounded">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              <span>
+                {result.dataQuality.matchupsWithoutData} matchup
+                {result.dataQuality.matchupsWithoutData > 1 ? "s" : ""} have no H2H data —
+                using estimated win rates. Scrape more match history for better accuracy.
+              </span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Current Matchups */}
+      <Card className="border-border/50">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Swords className="w-4 h-4 text-teal" />
+            Current Matchups
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {result.currentMatchups.map((slot, i) => (
+              <MatchupSlotCard key={i} slot={slot} position={slot.position} />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Swap Recommendations */}
+      <Card className="border-gold/20">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <ArrowRightLeft className="w-4 h-4 text-gold" />
+            Swap Recommendations
+            {result.recommendations.length > 0 && (
+              <Badge
+                className="bg-gold/20 text-gold border-gold/30 ml-1"
+                variant="outline"
+              >
+                {result.recommendations.length} swap
+                {result.recommendations.length > 1 ? "s" : ""}
+              </Badge>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {result.recommendations.length === 0 ? (
+            <div className="text-center py-8">
+              <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+              <p className="text-sm font-medium">Your lineup looks optimal!</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                No swaps found that would improve your expected win rate by more than 3%.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {result.recommendations.map((rec, i) => (
+                <SwapCard key={i} rec={rec} />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ─── Contest Mode: My Entries ──────────────────────────────────────
+
+function ContestModePanel({
+  gameData,
+}: {
+  gameData: GameData | undefined;
+}) {
   const { isAuthenticated } = useAuth();
 
-  // Load game data for champion lookup
-  const [gameData, setGameData] = useState<GameData | undefined>();
-  useEffect(() => {
-    fetch("/game-data.json")
-      .then((r) => r.json())
-      .then(setGameData)
-      .catch(console.error);
-  }, []);
+  // Fetch user's contest entries
+  const myEntries = trpc.matchup.myContestEntries.useQuery(
+    { limit: 20 },
+    { enabled: isAuthenticated }
+  );
 
-  // Your lineup (4 slots)
+  // Selected entry for analysis
+  const [selectedLineupId, setSelectedLineupId] = useState<number | null>(null);
+  const [selectedContestId, setSelectedContestId] = useState<number | null>(null);
+  const [selectedContestName, setSelectedContestName] = useState("");
+  const [selectedEntryNumber, setSelectedEntryNumber] = useState<number>(1);
+
+  // Fetch opponents for selected contest
+  const opponents = trpc.matchup.contestOpponents.useQuery(
+    { contestId: selectedContestId!, limit: 50 },
+    { enabled: selectedContestId !== null }
+  );
+
+  // Analysis mutation
+  const contestAnalyze = trpc.matchup.analyzeContestSwaps.useMutation({
+    onError: (err) => toast.error(`Analysis failed: ${err.message}`),
+  });
+
+  // Manual analyze (for manual opponent input in contest mode)
+  const manualAnalyze = trpc.matchup.analyzeSwaps.useMutation({
+    onError: (err) => toast.error(`Analysis failed: ${err.message}`),
+  });
+
+  // Selected opponent
+  const [selectedOpponent, setSelectedOpponent] = useState<{
+    username: string;
+    championIds: number[];
+    championNames: string[];
+  } | null>(null);
+
+  const handleSelectEntry = (entry: {
+    lineupId: number;
+    contestId: number | null;
+    contestName: string;
+    entryNumber: number | null;
+  }) => {
+    setSelectedLineupId(entry.lineupId);
+    setSelectedContestId(entry.contestId);
+    setSelectedContestName(entry.contestName);
+    setSelectedEntryNumber(entry.entryNumber ?? 1);
+    setSelectedOpponent(null);
+    contestAnalyze.reset();
+    manualAnalyze.reset();
+  };
+
+  const handleSelectOpponent = (opp: {
+    username: string;
+    champions: Array<{ name: string; championTokenId: string }>;
+  }) => {
+    const champIds = opp.champions
+      .map((c) => Number(c.championTokenId))
+      .filter((id) => !isNaN(id));
+
+    if (champIds.length !== 4) {
+      toast.error("Opponent must have exactly 4 identified champions");
+      return;
+    }
+
+    setSelectedOpponent({
+      username: opp.username,
+      championIds: champIds,
+      championNames: opp.champions.map((c) => c.name),
+    });
+
+    // Auto-analyze immediately
+    if (selectedLineupId) {
+      contestAnalyze.mutate({
+        lineupId: selectedLineupId,
+        opponentChampionIds: champIds as [number, number, number, number],
+      });
+    }
+  };
+
+  // Get champion name from game data
+  const getChampName = (tokenId: string | null) => {
+    if (!tokenId || !gameData?.champions) return "?";
+    const champ = gameData.champions.find((c) => String(c.tokenId) === tokenId);
+    return champ?.name ?? `#${tokenId}`;
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <Card className="border-gold/20 bg-gold/5">
+        <CardContent className="p-6 text-center">
+          <Users className="w-8 h-8 text-gold mx-auto mb-3" />
+          <p className="text-sm font-medium mb-1">Login Required</p>
+          <p className="text-xs text-muted-foreground">
+            Sign in to auto-load your contest entries and get swap recommendations.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const selectedEntry = myEntries.data?.find(
+    (e) => e.lineupId === selectedLineupId
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* Step 1: Select Your Entry */}
+      <Card className="border-emerald-500/20">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <ListChecks className="w-4 h-4 text-emerald-400" />
+            Step 1: Select Your Entry
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {myEntries.isLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4 justify-center">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading your entries...
+            </div>
+          ) : !myEntries.data || myEntries.data.length === 0 ? (
+            <div className="text-center py-6">
+              <Info className="w-6 h-6 text-muted-foreground mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">
+                No saved lineups found. Build a lineup in the{" "}
+                <a href="/lineup-builder" className="text-teal hover:underline">
+                  Lineup Builder
+                </a>{" "}
+                first.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              {myEntries.data.map((entry) => {
+                const isSelected = entry.lineupId === selectedLineupId;
+                const champNames = [
+                  getChampName(entry.champion1TokenId),
+                  getChampName(entry.champion2TokenId),
+                  getChampName(entry.champion3TokenId),
+                  getChampName(entry.champion4TokenId),
+                ];
+
+                return (
+                  <button
+                    key={entry.lineupId}
+                    onClick={() =>
+                      handleSelectEntry({
+                        lineupId: entry.lineupId,
+                        contestId: entry.contestId,
+                        contestName: entry.contestName,
+                        entryNumber: entry.entryNumber,
+                      })
+                    }
+                    className={`w-full text-left p-3 rounded-lg border transition-all ${
+                      isSelected
+                        ? "border-emerald-500/50 bg-emerald-500/10"
+                        : "border-border/30 bg-secondary/20 hover:bg-secondary/40"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-sm font-semibold truncate max-w-[60%]">
+                        {entry.contestName}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] h-5 ${
+                            entry.contestStatus === "LIVE"
+                              ? "border-emerald-500/40 text-emerald-400"
+                              : entry.contestStatus === "OPEN"
+                                ? "border-gold/40 text-gold"
+                                : "border-muted-foreground/30 text-muted-foreground"
+                          }`}
+                        >
+                          {entry.contestStatus}
+                        </Badge>
+                        <Badge variant="outline" className="text-[10px] h-5">
+                          Entry #{entry.entryNumber}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <Swords className="w-3 h-3" />
+                      {entry.champions
+                        ? entry.champions.map((c: any) => c.name).join(" · ")
+                        : champNames.join(" · ")}
+                    </div>
+                    {entry.predictedScore && (
+                      <div className="text-[10px] text-gold mt-1">
+                        Predicted: {Number(entry.predictedScore).toLocaleString()} pts
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Step 2: Select Opponent */}
+      {selectedLineupId && selectedContestId && (
+        <Card className="border-destructive/20">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Target className="w-4 h-4 text-destructive" />
+              Step 2: Select Opponent
+              {selectedOpponent && (
+                <Badge variant="outline" className="text-[10px] h-5 ml-auto">
+                  vs {selectedOpponent.username}
+                </Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {opponents.isLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-4 justify-center">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading opponents...
+              </div>
+            ) : !opponents.data || opponents.data.opponents.length === 0 ? (
+              <div className="text-center py-4">
+                <AlertTriangle className="w-5 h-5 text-orange-400 mx-auto mb-2" />
+                <p className="text-xs text-muted-foreground mb-2">
+                  No opponent data available yet for this contest. Run a contest scrape
+                  from the Dashboard to populate leaderboard data, or enter opponents
+                  manually below.
+                </p>
+                <ManualOpponentInput
+                  gameData={gameData}
+                  onAnalyze={(oppIds) => {
+                    if (selectedLineupId) {
+                      contestAnalyze.mutate({
+                        lineupId: selectedLineupId,
+                        opponentChampionIds: oppIds as [number, number, number, number],
+                      });
+                    }
+                  }}
+                  isPending={contestAnalyze.isPending}
+                />
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[350px] overflow-y-auto">
+                {opponents.data.opponents.map((opp) => {
+                  const isSelected =
+                    selectedOpponent?.username === opp.username &&
+                    selectedOpponent?.championIds.join(",") ===
+                      opp.champions.map((c) => c.championTokenId).join(",");
+
+                  return (
+                    <button
+                      key={opp.id}
+                      onClick={() => handleSelectOpponent(opp)}
+                      className={`w-full text-left p-3 rounded-lg border transition-all ${
+                        isSelected
+                          ? "border-destructive/50 bg-destructive/10"
+                          : "border-border/30 bg-secondary/20 hover:bg-secondary/40"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium">
+                          {opp.username.length > 20
+                            ? opp.username.slice(0, 8) + "..." + opp.username.slice(-4)
+                            : opp.username}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="outline" className="text-[10px] h-5">
+                            Rank #{opp.rank}
+                          </Badge>
+                          <span className="text-[10px] text-muted-foreground">
+                            {opp.score} pts
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <Target className="w-3 h-3" />
+                        {opp.champions.map((c) => c.name).join(" · ")}
+                      </div>
+                      {opp.aiConfidence !== null && (
+                        <div className="text-[10px] text-muted-foreground mt-0.5">
+                          AI confidence: {(opp.aiConfidence * 100).toFixed(0)}%
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Loading state */}
+      {(contestAnalyze.isPending || manualAnalyze.isPending) && (
+        <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+          <Loader2 className="w-5 h-5 animate-spin text-gold" />
+          Analyzing matchups and finding optimal swaps...
+        </div>
+      )}
+
+      {/* Results */}
+      {contestAnalyze.data && (
+        <AnalysisResults
+          result={contestAnalyze.data}
+          contestName={selectedContestName}
+          entryNumber={selectedEntryNumber}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Manual Opponent Input (fallback when no leaderboard data) ─────
+
+function ManualOpponentInput({
+  gameData,
+  onAnalyze,
+  isPending,
+}: {
+  gameData: GameData | undefined;
+  onAnalyze: (oppIds: number[]) => void;
+  isPending: boolean;
+}) {
+  const [oppSlots, setOppSlots] = useState<ChampionSlot[]>([
+    { tokenId: null, name: "" },
+    { tokenId: null, name: "" },
+    { tokenId: null, name: "" },
+    { tokenId: null, name: "" },
+  ]);
+
+  const updateOppSlot = (index: number, slot: ChampionSlot) => {
+    setOppSlots((prev) => {
+      const next = [...prev];
+      next[index] = slot;
+      return next;
+    });
+  };
+
+  const allFilled = oppSlots.every((s) => s.tokenId !== null);
+
+  return (
+    <div className="space-y-3 mt-3 text-left">
+      <p className="text-xs font-medium text-muted-foreground">
+        Enter opponent MOKIs manually:
+      </p>
+      {oppSlots.map((slot, i) => (
+        <ChampionPicker
+          key={`manual-opp-${i}`}
+          label="Opponent MOKI"
+          position={i + 1}
+          value={slot}
+          onChange={(s) => updateOppSlot(i, s)}
+          gameData={gameData}
+        />
+      ))}
+      <Button
+        onClick={() => onAnalyze(oppSlots.map((s) => s.tokenId!))}
+        disabled={!allFilled || isPending}
+        className="w-full bg-gold text-background hover:bg-gold/90 h-9 text-sm"
+        size="sm"
+      >
+        {isPending ? (
+          <>
+            <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+            Analyzing...
+          </>
+        ) : (
+          <>
+            <Zap className="w-3.5 h-3.5 mr-1.5" />
+            Analyze Matchups
+          </>
+        )}
+      </Button>
+    </div>
+  );
+}
+
+// ─── Manual Mode Panel ─────────────────────────────────────────────
+
+function ManualModePanel({
+  gameData,
+}: {
+  gameData: GameData | undefined;
+}) {
+  const { isAuthenticated } = useAuth();
+
   const [yourSlots, setYourSlots] = useState<ChampionSlot[]>([
     { tokenId: null, name: "" },
     { tokenId: null, name: "" },
@@ -363,7 +930,6 @@ export default function SwapAdvisor() {
     { tokenId: null, name: "" },
   ]);
 
-  // Opponent lineup (4 slots)
   const [oppSlots, setOppSlots] = useState<ChampionSlot[]>([
     { tokenId: null, name: "" },
     { tokenId: null, name: "" },
@@ -403,44 +969,9 @@ export default function SwapAdvisor() {
     });
   };
 
-  const result = analyzeMutation.data;
-
   return (
-    <div className="space-y-4 sm:space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gold">
-          Swap Advisor
-        </h1>
-        <p className="text-muted-foreground text-xs sm:text-sm mt-1">
-          Analyze your matchups and get swap recommendations based on H2H data
-        </p>
-      </div>
-
-      {/* Info banner */}
-      <Card className="border-teal/20 bg-teal/5">
-        <CardContent className="p-3 sm:p-4">
-          <div className="flex items-start gap-2">
-            <Info className="w-4 h-4 text-teal mt-0.5 shrink-0" />
-            <div className="text-xs text-muted-foreground">
-              <p>
-                Enter your 4 MOKIs and the opponent's 4 MOKIs in order (Match 1–4).
-                The advisor will analyze head-to-head win rates and suggest swaps from
-                your bench to improve your expected outcome.
-              </p>
-              {isAuthenticated && (
-                <p className="mt-1 text-teal">
-                  Logged in — your full card inventory will be used as the bench automatically.
-                </p>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Lineup Input */}
+    <div className="space-y-4">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Your Lineup */}
         <Card className="border-emerald-500/20">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -462,7 +993,6 @@ export default function SwapAdvisor() {
           </CardContent>
         </Card>
 
-        {/* Opponent Lineup */}
         <Card className="border-destructive/20">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -485,7 +1015,6 @@ export default function SwapAdvisor() {
         </Card>
       </div>
 
-      {/* Analyze Button */}
       <div className="flex justify-center">
         <Button
           onClick={handleAnalyze}
@@ -507,123 +1036,112 @@ export default function SwapAdvisor() {
         </Button>
       </div>
 
-      {/* Results */}
-      {result && (
-        <div className="space-y-4 sm:space-y-6">
-          {/* Overall Summary */}
-          <Card className="border-border/50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-gold" />
-                Analysis Summary
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                <div className="p-3 rounded-lg bg-secondary/30 text-center">
-                  <p className="text-[10px] text-muted-foreground mb-1">Current Win Rate</p>
-                  <p
-                    className={`text-xl font-bold tabular-nums ${
-                      result.currentOverallWinRate >= 55
-                        ? "text-emerald-400"
-                        : result.currentOverallWinRate < 45
-                          ? "text-destructive"
-                          : "text-foreground"
-                    }`}
-                  >
-                    {result.currentOverallWinRate.toFixed(1)}%
-                  </p>
-                </div>
-                <div className="p-3 rounded-lg bg-secondary/30 text-center">
-                  <p className="text-[10px] text-muted-foreground mb-1">Best Possible</p>
-                  <p className="text-xl font-bold tabular-nums text-emerald-400">
-                    {result.bestPossibleWinRate.toFixed(1)}%
-                  </p>
-                </div>
-                <div className="p-3 rounded-lg bg-secondary/30 text-center">
-                  <p className="text-[10px] text-muted-foreground mb-1">Improvement</p>
-                  <p
-                    className={`text-xl font-bold tabular-nums ${
-                      result.improvementPotential > 0 ? "text-gold" : "text-muted-foreground"
-                    }`}
-                  >
-                    {result.improvementPotential > 0 ? "+" : ""}
-                    {result.improvementPotential.toFixed(1)}%
-                  </p>
-                </div>
-                <div className="p-3 rounded-lg bg-secondary/30 text-center">
-                  <p className="text-[10px] text-muted-foreground mb-1">Data Quality</p>
-                  <p className="text-xl font-bold tabular-nums">
-                    {result.dataQuality.matchupsWithData}/4
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {result.dataQuality.totalH2hMatchesUsed} H2H matches
-                  </p>
-                </div>
-              </div>
+      {analyzeMutation.data && <AnalysisResults result={analyzeMutation.data} />}
+    </div>
+  );
+}
 
-              {result.dataQuality.matchupsWithoutData > 0 && (
-                <div className="flex items-center gap-2 text-xs text-orange-400 bg-orange-500/10 p-2 rounded">
-                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                  <span>
-                    {result.dataQuality.matchupsWithoutData} matchup
-                    {result.dataQuality.matchupsWithoutData > 1 ? "s" : ""} have no H2H
-                    data — using estimated win rates. Scrape more match history for better accuracy.
-                  </span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+// ─── Main Page ─────────────────────────────────────────────────────
 
-          {/* Current Matchups */}
-          <Card className="border-border/50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Swords className="w-4 h-4 text-teal" />
-                Current Matchups
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {result.currentMatchups.map((slot, i) => (
-                  <MatchupSlotCard key={i} slot={slot} position={slot.position} />
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+export default function SwapAdvisor() {
+  const { isAuthenticated } = useAuth();
+  const [mode, setMode] = useState<AdvisorMode>(isAuthenticated ? "contest" : "manual");
 
-          {/* Swap Recommendations */}
-          <Card className="border-gold/20">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <ArrowRightLeft className="w-4 h-4 text-gold" />
-                Swap Recommendations
-                {result.recommendations.length > 0 && (
-                  <Badge className="bg-gold/20 text-gold border-gold/30 ml-1" variant="outline">
-                    {result.recommendations.length} swap{result.recommendations.length > 1 ? "s" : ""}
-                  </Badge>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {result.recommendations.length === 0 ? (
-                <div className="text-center py-8">
-                  <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-                  <p className="text-sm font-medium">Your lineup looks optimal!</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    No swaps found that would improve your expected win rate by more than 3%.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {result.recommendations.map((rec, i) => (
-                    <SwapCard key={i} rec={rec} />
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+  // Load game data for champion lookup
+  const [gameData, setGameData] = useState<GameData | undefined>();
+  useEffect(() => {
+    fetch("/game-data.json")
+      .then((r) => r.json())
+      .then(setGameData)
+      .catch(console.error);
+  }, []);
+
+  // Update mode when auth state changes
+  useEffect(() => {
+    if (isAuthenticated && mode === "manual") {
+      // Don't auto-switch if user explicitly chose manual
+    }
+  }, [isAuthenticated]);
+
+  return (
+    <div className="space-y-4 sm:space-y-6">
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gold">
+            Swap Advisor
+          </h1>
+          <p className="text-muted-foreground text-xs sm:text-sm mt-1">
+            Analyze your matchups and get swap recommendations based on H2H data
+          </p>
         </div>
+      </div>
+
+      {/* Mode Tabs */}
+      <div className="flex gap-2">
+        <Button
+          variant={mode === "contest" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setMode("contest")}
+          className={
+            mode === "contest"
+              ? "bg-gold text-background hover:bg-gold/90"
+              : "bg-transparent"
+          }
+        >
+          <ListChecks className="w-3.5 h-3.5 mr-1.5" />
+          From Contest Entry
+        </Button>
+        <Button
+          variant={mode === "manual" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setMode("manual")}
+          className={
+            mode === "manual"
+              ? "bg-gold text-background hover:bg-gold/90"
+              : "bg-transparent"
+          }
+        >
+          <PenLine className="w-3.5 h-3.5 mr-1.5" />
+          Manual Input
+        </Button>
+      </div>
+
+      {/* Info banner */}
+      <Card className="border-teal/20 bg-teal/5">
+        <CardContent className="p-3 sm:p-4">
+          <div className="flex items-start gap-2">
+            <Info className="w-4 h-4 text-teal mt-0.5 shrink-0" />
+            <div className="text-xs text-muted-foreground">
+              {mode === "contest" ? (
+                <p>
+                  Select a contest entry to auto-load your lineup, then pick an opponent
+                  from the leaderboard. The advisor will analyze H2H win rates and suggest
+                  optimal swaps from your bench.
+                </p>
+              ) : (
+                <p>
+                  Enter your 4 MOKIs and the opponent's 4 MOKIs in order (Match 1–4). The
+                  advisor will analyze head-to-head win rates and suggest swaps from your
+                  bench to improve your expected outcome.
+                </p>
+              )}
+              {isAuthenticated && (
+                <p className="mt-1 text-teal">
+                  Logged in — your full card inventory will be used as the bench
+                  automatically.
+                </p>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Mode Content */}
+      {mode === "contest" ? (
+        <ContestModePanel gameData={gameData} />
+      ) : (
+        <ManualModePanel gameData={gameData} />
       )}
     </div>
   );

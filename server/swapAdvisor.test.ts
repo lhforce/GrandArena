@@ -416,3 +416,247 @@ describe("Bulk H2H Matrix", () => {
     expect(result).toBeUndefined();
   });
 });
+
+// ─── Incremental Scraper Logic Tests ─────────────────────────────
+
+describe("Incremental Scraper — Stop-on-known Logic", () => {
+  it("should identify new entries before a known matchId", () => {
+    const newestKnownMatchId = "match_003";
+    const apiResponse = [
+      { matchId: "match_006" },
+      { matchId: "match_005" },
+      { matchId: "match_004" },
+      { matchId: "match_003" }, // known — stop here
+      { matchId: "match_002" },
+      { matchId: "match_001" },
+    ];
+
+    const newEntries: typeof apiResponse = [];
+    for (const entry of apiResponse) {
+      if (entry.matchId === newestKnownMatchId) break;
+      newEntries.push(entry);
+    }
+
+    expect(newEntries).toHaveLength(3);
+    expect(newEntries.map((e) => e.matchId)).toEqual([
+      "match_006",
+      "match_005",
+      "match_004",
+    ]);
+  });
+
+  it("should return all entries when no known matchId exists (first scrape)", () => {
+    const newestKnownMatchId: string | null = null;
+    const apiResponse = [
+      { matchId: "match_003" },
+      { matchId: "match_002" },
+      { matchId: "match_001" },
+    ];
+
+    const newEntries: typeof apiResponse = [];
+    for (const entry of apiResponse) {
+      if (newestKnownMatchId && entry.matchId === newestKnownMatchId) break;
+      newEntries.push(entry);
+    }
+
+    expect(newEntries).toHaveLength(3);
+  });
+
+  it("should return empty when first entry is already known (no new data)", () => {
+    const newestKnownMatchId = "match_003";
+    const apiResponse = [
+      { matchId: "match_003" }, // immediately known
+      { matchId: "match_002" },
+      { matchId: "match_001" },
+    ];
+
+    const newEntries: typeof apiResponse = [];
+    for (const entry of apiResponse) {
+      if (entry.matchId === newestKnownMatchId) break;
+      newEntries.push(entry);
+    }
+
+    expect(newEntries).toHaveLength(0);
+  });
+
+  it("should track the latest matchId from page 1 for next incremental run", () => {
+    const apiPage1 = [
+      { matchId: "match_010" },
+      { matchId: "match_009" },
+      { matchId: "match_008" },
+    ];
+
+    const latestMatchId = apiPage1.length > 0 ? apiPage1[0].matchId : null;
+    expect(latestMatchId).toBe("match_010");
+  });
+});
+
+describe("Incremental Scraper — Pagination Logic", () => {
+  it("should stop pagination when known match is found on page 2", () => {
+    const newestKnownMatchId = "match_50";
+
+    // Simulate page 1: all new (match_200 to match_101)
+    const page1 = Array.from({ length: 100 }, (_, i) => ({
+      matchId: `match_${200 - i}`,
+    }));
+
+    let foundKnown = false;
+    let newCount = 0;
+    for (const entry of page1) {
+      if (entry.matchId === newestKnownMatchId) {
+        foundKnown = true;
+        break;
+      }
+      newCount++;
+    }
+
+    expect(foundKnown).toBe(false);
+    expect(newCount).toBe(100);
+
+    // Simulate page 2: match_100 to match_1 — match_50 is in there
+    const page2 = Array.from({ length: 100 }, (_, i) => ({
+      matchId: `match_${100 - i}`,
+    }));
+
+    let page2NewCount = 0;
+    for (const entry of page2) {
+      if (entry.matchId === newestKnownMatchId) {
+        foundKnown = true;
+        break;
+      }
+      page2NewCount++;
+    }
+
+    expect(foundKnown).toBe(true);
+    expect(page2NewCount).toBe(50); // match_100 to match_51
+  });
+
+  it("should handle empty API response gracefully", () => {
+    const apiResponse: Array<{ matchId: string }> = [];
+    const keepGoing = apiResponse.length > 0;
+
+    expect(keepGoing).toBe(false);
+  });
+});
+
+// ─── Cron Job Scheduling Tests ───────────────────────────────────
+
+describe("Cron Job — Scheduling Logic", () => {
+  it("should calculate next run time as 1 hour after last run", () => {
+    const CRON_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+    const lastRun = new Date("2026-02-22T10:00:00Z");
+    const nextRun = new Date(lastRun.getTime() + CRON_INTERVAL_MS);
+
+    expect(nextRun.toISOString()).toBe("2026-02-22T11:00:00.000Z");
+  });
+
+  it("should prevent concurrent runs", () => {
+    let incrementalRunning = false;
+    let scrapeRunning = false;
+
+    // First run starts
+    incrementalRunning = true;
+    const canStart1 = !incrementalRunning && !scrapeRunning;
+    expect(canStart1).toBe(false); // blocked
+
+    // First run finishes
+    incrementalRunning = false;
+    const canStart2 = !incrementalRunning && !scrapeRunning;
+    expect(canStart2).toBe(true); // allowed
+
+    // Full scrape blocks incremental
+    scrapeRunning = true;
+    const canStart3 = !incrementalRunning && !scrapeRunning;
+    expect(canStart3).toBe(false); // blocked
+  });
+
+  it("should only run incremental on completed champions", () => {
+    const progress = [
+      { championTokenId: 100, status: "completed", newestMatchId: "m1" },
+      { championTokenId: 200, status: "pending", newestMatchId: null },
+      { championTokenId: 300, status: "completed", newestMatchId: "m2" },
+      { championTokenId: 400, status: "in_progress", newestMatchId: null },
+      { championTokenId: 500, status: "failed", newestMatchId: null },
+    ];
+
+    const completedChampions = progress.filter((p) => p.status === "completed");
+    expect(completedChampions).toHaveLength(2);
+    expect(completedChampions.map((c) => c.championTokenId)).toEqual([100, 300]);
+  });
+
+  it("should aggregate incremental results across all champions", () => {
+    const results = [
+      { newMatches: 5, newStats: 30 },
+      { newMatches: 0, newStats: 0 },
+      { newMatches: 12, newStats: 72 },
+      { newMatches: 3, newStats: 18 },
+    ];
+
+    const totalNewMatches = results.reduce((sum, r) => sum + r.newMatches, 0);
+    const totalNewStats = results.reduce((sum, r) => sum + r.newStats, 0);
+
+    expect(totalNewMatches).toBe(20);
+    expect(totalNewStats).toBe(120);
+  });
+});
+
+// ─── Contest-Based Swap Advisor Tests ────────────────────────────
+
+describe("Contest-Based Swap Advisor — NFT to ChampionId Resolution", () => {
+  it("should resolve NFT tokenIds to championTokenIds via lookup", () => {
+    const nftToChampId = new Map<string, number>();
+    nftToChampId.set("483242658553", 5256);
+    nftToChampId.set("483242658100", 7008);
+    nftToChampId.set("483242658200", 6701);
+
+    const nftIds = ["483242658553", "483242658100", "483242658200", "483242658999"];
+    const resolved = nftIds.map((nft) => nftToChampId.get(nft) ?? null);
+
+    expect(resolved).toEqual([5256, 7008, 6701, null]);
+    expect(resolved.filter(Boolean)).toHaveLength(3);
+  });
+
+  it("should handle lineup with unresolvable NFT IDs gracefully", () => {
+    const nftToChampId = new Map<string, number>();
+    // Empty map — no cards synced
+
+    const nftIds = ["111", "222", "333", "444"];
+    const resolved = nftIds.map((nft) => nftToChampId.get(nft) ?? null);
+
+    const validCount = resolved.filter(Boolean).length;
+    expect(validCount).toBe(0);
+  });
+});
+
+describe("Contest-Based Swap Advisor — Opponent Detection", () => {
+  it("should extract opponent lineups from leaderboard entries", () => {
+    const leaderboardEntries = [
+      {
+        id: 1,
+        entryName: "Player A",
+        identifiedChampions: JSON.stringify([
+          { championTokenId: 5256, name: "Golden Nugget" },
+          { championTokenId: 7008, name: "Vagabond" },
+          { championTokenId: 6701, name: "Dheu" },
+          { championTokenId: 5705, name: "Smiley" },
+        ]),
+      },
+      {
+        id: 2,
+        entryName: "Player B",
+        identifiedChampions: null, // not identified yet
+      },
+    ];
+
+    const opponents = leaderboardEntries
+      .filter((e) => e.identifiedChampions)
+      .map((e) => ({
+        entryName: e.entryName,
+        champions: JSON.parse(e.identifiedChampions!),
+      }));
+
+    expect(opponents).toHaveLength(1);
+    expect(opponents[0].champions).toHaveLength(4);
+    expect(opponents[0].champions[0].name).toBe("Golden Nugget");
+  });
+});

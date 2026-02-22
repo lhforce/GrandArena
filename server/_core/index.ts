@@ -62,4 +62,11 @@ async function startServer() {
   });
 }
 
-startServer().catch(console.error);
+startServer().then(() => {
+  // Start the hourly incremental match scrape cron job
+  import("../matchScraper").then(({ startMatchScrapeCron }) => {
+    startMatchScrapeCron();
+  }).catch((err) => {
+    console.error("[Cron] Failed to start match scrape cron:", err);
+  });
+}).catch(console.error);

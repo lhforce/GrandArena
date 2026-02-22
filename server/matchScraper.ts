@@ -539,3 +539,272 @@ export async function scrapeSingleChampion(
   const name = championName || `Champion #${championTokenId}`;
   return scrapeChampionMatches(championTokenId, name);
 }
+
+// ─── Incremental Scraper ──────────────────────────────────────────
+
+let incrementalRunning = false;
+let lastIncrementalRun: Date | null = null;
+let lastIncrementalResult: IncrementalResult | null = null;
+
+export interface IncrementalResult {
+  championsChecked: number;
+  newMatchesFound: number;
+  newStatsFound: number;
+  duration: number; // ms
+  startedAt: string;
+  completedAt: string;
+}
+
+/**
+ * Incremental scrape: for each champion, fetch page 1 (newest matches)
+ * and stop as soon as we encounter a matchId we already have.
+ * Much faster than full scrape — typically 1-2 pages per champion.
+ */
+async function scrapeChampionIncremental(
+  championTokenId: number,
+  championName: string,
+  newestKnownMatchId: string | null
+): Promise<{ newMatches: number; newStats: number; latestMatchId: string | null }> {
+  const db = await getDb();
+  if (!db) return { newMatches: 0, newStats: 0, latestMatchId: null };
+
+  let totalNewMatches = 0;
+  let totalNewStats = 0;
+  let latestMatchId: string | null = null;
+  let page = 1;
+  let keepGoing = true;
+
+  while (keepGoing) {
+    const response = await fetchMokiMatches(championTokenId, page);
+    if (!response || !response.data || response.data.length === 0) break;
+
+    // Track the newest matchId from page 1
+    if (page === 1 && response.data.length > 0) {
+      latestMatchId = response.data[0].matchId;
+    }
+
+    // Check if we've hit already-known data
+    let foundKnown = false;
+    const newEntries: GAMatchEntry[] = [];
+
+    for (const entry of response.data) {
+      if (newestKnownMatchId && entry.matchId === newestKnownMatchId) {
+        foundKnown = true;
+        break;
+      }
+      newEntries.push(entry);
+    }
+
+    // Store new entries
+    if (newEntries.length > 0) {
+      const { matchesInserted, statsInserted } = await storeMatchData(newEntries);
+      totalNewMatches += matchesInserted;
+      totalNewStats += statsInserted;
+    }
+
+    // Stop if we found known data or reached the last page
+    if (foundKnown || page >= response.pagination.pages) {
+      keepGoing = false;
+    } else {
+      page++;
+      await sleep(REQUEST_DELAY_MS);
+    }
+  }
+
+  // Update progress record
+  if (latestMatchId || totalNewMatches > 0) {
+    await db
+      .update(matchScrapeProgress)
+      .set({
+        newestMatchId: latestMatchId ?? newestKnownMatchId,
+        lastIncrementalAt: new Date(),
+        incrementalMatchesAdded: totalNewMatches,
+        lastScrapedAt: new Date(),
+      })
+      .where(eq(matchScrapeProgress.championTokenId, championTokenId));
+  }
+
+  return { newMatches: totalNewMatches, newStats: totalNewStats, latestMatchId };
+}
+
+/**
+ * Run incremental match scrape for all champions.
+ * Only fetches new matches since the last scrape for each champion.
+ * Typically completes in 5-15 minutes vs 30-60 for full scrape.
+ */
+export async function runIncrementalMatchScrape(): Promise<IncrementalResult> {
+  if (incrementalRunning || scrapeRunning) {
+    console.log("[MatchScraper] Scrape already in progress, skipping incremental run");
+    return lastIncrementalResult ?? {
+      championsChecked: 0,
+      newMatchesFound: 0,
+      newStatsFound: 0,
+      duration: 0,
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    };
+  }
+
+  incrementalRunning = true;
+  const startTime = Date.now();
+  const startedAt = new Date().toISOString();
+
+  let championsChecked = 0;
+  let totalNewMatches = 0;
+  let totalNewStats = 0;
+
+  try {
+    const db = await getDb();
+    if (!db) throw new Error("Database not available");
+
+    // Get all champions with their scrape progress
+    const progress = await db.select().from(matchScrapeProgress);
+
+    // Only run incremental on champions that have been fully scraped at least once
+    const completedChampions = progress.filter((p) => p.status === "completed");
+
+    if (completedChampions.length === 0) {
+      console.log("[MatchScraper] No completed champions found. Run a full scrape first.");
+      const result: IncrementalResult = {
+        championsChecked: 0,
+        newMatchesFound: 0,
+        newStatsFound: 0,
+        duration: Date.now() - startTime,
+        startedAt,
+        completedAt: new Date().toISOString(),
+      };
+      lastIncrementalResult = result;
+      return result;
+    }
+
+    console.log(
+      `[MatchScraper] Starting incremental scrape for ${completedChampions.length} champions`
+    );
+
+    for (const champ of completedChampions) {
+      if (scrapeAborted) break;
+
+      const { newMatches, newStats } = await scrapeChampionIncremental(
+        champ.championTokenId,
+        champ.championName ?? `Champion #${champ.championTokenId}`,
+        champ.newestMatchId
+      );
+
+      totalNewMatches += newMatches;
+      totalNewStats += newStats;
+      championsChecked++;
+
+      if (newMatches > 0) {
+        console.log(
+          `[MatchScraper] ${champ.championName}: +${newMatches} new matches`
+        );
+      }
+
+      // Rate limiting between champions
+      await sleep(300);
+    }
+
+    const duration = Date.now() - startTime;
+    console.log(
+      `[MatchScraper] Incremental scrape complete. ` +
+      `${championsChecked} champions checked, ${totalNewMatches} new matches found ` +
+      `in ${Math.round(duration / 1000)}s`
+    );
+
+    const result: IncrementalResult = {
+      championsChecked,
+      newMatchesFound: totalNewMatches,
+      newStatsFound: totalNewStats,
+      duration,
+      startedAt,
+      completedAt: new Date().toISOString(),
+    };
+    lastIncrementalResult = result;
+    lastIncrementalRun = new Date();
+    return result;
+  } catch (err) {
+    console.error("[MatchScraper] Incremental scrape error:", err);
+    return {
+      championsChecked,
+      newMatchesFound: totalNewMatches,
+      newStatsFound: totalNewStats,
+      duration: Date.now() - startTime,
+      startedAt,
+      completedAt: new Date().toISOString(),
+    };
+  } finally {
+    incrementalRunning = false;
+  }
+}
+
+/**
+ * Get the status of the incremental cron job.
+ */
+export function getIncrementalStatus(): {
+  isRunning: boolean;
+  lastRun: string | null;
+  lastResult: IncrementalResult | null;
+  nextRun: string | null;
+  cronActive: boolean;
+} {
+  return {
+    isRunning: incrementalRunning,
+    lastRun: lastIncrementalRun?.toISOString() ?? null,
+    lastResult: lastIncrementalResult,
+    nextRun: cronIntervalId ? getNextCronRun() : null,
+    cronActive: cronIntervalId !== null,
+  };
+}
+
+function getNextCronRun(): string {
+  if (!lastIncrementalRun) {
+    // If never run, next run is ~1 hour from server start
+    return new Date(Date.now() + CRON_INTERVAL_MS).toISOString();
+  }
+  const nextRun = new Date(lastIncrementalRun.getTime() + CRON_INTERVAL_MS);
+  return nextRun.toISOString();
+}
+
+// ─── Cron Job ─────────────────────────────────────────────────────
+
+const CRON_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+let cronIntervalId: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Start the hourly incremental match scrape cron job.
+ * Safe to call multiple times — won't create duplicate intervals.
+ */
+export function startMatchScrapeCron(): void {
+  if (cronIntervalId) {
+    console.log("[MatchScraper] Cron already running");
+    return;
+  }
+
+  console.log("[MatchScraper] Starting hourly incremental match scrape cron");
+
+  // Run first incremental scrape after a 2-minute delay (let server fully start)
+  setTimeout(() => {
+    runIncrementalMatchScrape().catch((err) =>
+      console.error("[MatchScraper] Initial incremental scrape failed:", err)
+    );
+  }, 2 * 60 * 1000);
+
+  // Then run every hour
+  cronIntervalId = setInterval(() => {
+    console.log("[MatchScraper] Hourly cron triggered");
+    runIncrementalMatchScrape().catch((err) =>
+      console.error("[MatchScraper] Hourly incremental scrape failed:", err)
+    );
+  }, CRON_INTERVAL_MS);
+}
+
+/**
+ * Stop the hourly cron job.
+ */
+export function stopMatchScrapeCron(): void {
+  if (cronIntervalId) {
+    clearInterval(cronIntervalId);
+    cronIntervalId = null;
+    console.log("[MatchScraper] Cron stopped");
+  }
+}

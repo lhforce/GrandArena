@@ -20,6 +20,10 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
+  Timer,
+  Play,
+  Square,
+  Zap,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -259,6 +263,9 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
+      {/* Match History Cron Status */}
+      <MatchCronCard />
+
       {/* Quick Info */}
       <div className="grid md:grid-cols-2 gap-3 sm:gap-4">
         <Card className="glass-card">
@@ -309,6 +316,132 @@ function StatCard({ icon, label, value, highlight }: { icon: React.ReactNode; la
         <p className={`text-lg sm:text-2xl font-bold ${highlight ? "text-gold" : ""}`}>
           {typeof value === "number" ? value.toLocaleString() : value}
         </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MatchCronCard() {
+  const cronStatus = trpc.matchup.cronStatus.useQuery(undefined, {
+    refetchInterval: 30000, // refresh every 30s
+  });
+  const triggerIncremental = trpc.matchup.triggerIncrementalScrape.useMutation({
+    onSuccess: () => toast.info("Incremental match scrape started"),
+    onError: (err) => toast.error(`Failed: ${err.message}`),
+  });
+  const startCron = trpc.matchup.startCron.useMutation({
+    onSuccess: () => { toast.success("Cron started"); cronStatus.refetch(); },
+  });
+  const stopCron = trpc.matchup.stopCron.useMutation({
+    onSuccess: () => { toast.info("Cron stopped"); cronStatus.refetch(); },
+  });
+
+  const cs = cronStatus.data;
+
+  return (
+    <Card className="glass-card">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+            <Timer className="w-4 h-4 sm:w-5 sm:h-5 text-gold" />
+            Match History Cron
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            {cs?.cronActive ? (
+              <Badge className="bg-green-600/20 text-green-300 text-xs">Active</Badge>
+            ) : (
+              <Badge variant="secondary" className="text-xs">Inactive</Badge>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {cronStatus.isLoading ? (
+          <div className="h-16 bg-muted/30 rounded animate-pulse" />
+        ) : cs ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">Status</p>
+                <p className="text-sm font-medium">
+                  {cs.isRunning ? (
+                    <span className="text-teal flex items-center justify-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Running
+                    </span>
+                  ) : cs.cronActive ? (
+                    <span className="text-green-400">Idle</span>
+                  ) : (
+                    <span className="text-muted-foreground">Stopped</span>
+                  )}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">Last Run</p>
+                <p className="text-sm font-medium">
+                  {cs.lastRun ? new Date(cs.lastRun).toLocaleTimeString() : "Never"}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">Next Run</p>
+                <p className="text-sm font-medium">
+                  {cs.nextRun ? new Date(cs.nextRun).toLocaleTimeString() : "—"}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">New Matches</p>
+                <p className="text-sm font-medium text-gold">
+                  {cs.lastResult ? `+${cs.lastResult.newMatchesFound}` : "—"}
+                </p>
+              </div>
+            </div>
+
+            {cs.lastResult && (
+              <div className="text-xs text-muted-foreground bg-background/50 rounded-lg p-2">
+                Last run: {cs.lastResult.championsChecked} champions checked,{" "}
+                {cs.lastResult.newMatchesFound} new matches,{" "}
+                {Math.round(cs.lastResult.duration / 1000)}s duration
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs h-8 border-gold/30 text-gold hover:bg-gold/10"
+                onClick={() => triggerIncremental.mutate()}
+                disabled={cs.isRunning || triggerIncremental.isPending}
+              >
+                <Zap className="w-3 h-3 mr-1" />
+                Run Now
+              </Button>
+              {cs.cronActive ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-8"
+                  onClick={() => stopCron.mutate()}
+                  disabled={stopCron.isPending}
+                >
+                  <Square className="w-3 h-3 mr-1" />
+                  Stop Cron
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-8 border-green-500/30 text-green-400 hover:bg-green-500/10"
+                  onClick={() => startCron.mutate()}
+                  disabled={startCron.isPending}
+                >
+                  <Play className="w-3 h-3 mr-1" />
+                  Start Cron
+                </Button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Unable to load cron status.</p>
+        )}
       </CardContent>
     </Card>
   );

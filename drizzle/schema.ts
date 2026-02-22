@@ -299,6 +299,9 @@ export const matchScrapeProgress = mysqlTable("match_scrape_progress", {
   totalPages: int("totalPages").default(0),
   status: varchar("status", { length: 16 }).default("pending"), // pending, in_progress, completed, failed
   lastScrapedAt: timestamp("lastScrapedAt"),
+  newestMatchId: varchar("newestMatchId", { length: 64 }), // most recent matchId seen — used for incremental scraping
+  lastIncrementalAt: timestamp("lastIncrementalAt"), // when the last incremental run touched this champion
+  incrementalMatchesAdded: int("incrementalMatchesAdded").default(0), // matches added in last incremental run
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

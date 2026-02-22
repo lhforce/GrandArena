@@ -272,7 +272,7 @@ function getConfidence(matches: number): "high" | "medium" | "low" | "none" {
 /**
  * Load game data champion lookup map.
  */
-export async function loadGameDataLookup(): Promise<Map<number, { name: string; championClass: string }>> {
+export async function loadGameDataLookup(): Promise<Map<number, { name: string; championClass: string; championTokenId?: number }>> {
   const fs = await import("fs");
   const path = await import("path");
   const gameDataPath = path.resolve(
@@ -280,7 +280,7 @@ export async function loadGameDataLookup(): Promise<Map<number, { name: string; 
     "../client/public/game-data.json"
   );
 
-  const lookup = new Map<number, { name: string; championClass: string }>();
+  const lookup = new Map<number, { name: string; championClass: string; championTokenId?: number }>();
 
   try {
     const raw = fs.readFileSync(gameDataPath, "utf-8");
@@ -288,11 +288,19 @@ export async function loadGameDataLookup(): Promise<Map<number, { name: string; 
 
     for (const champ of gameData.champions ?? []) {
       const tokenId = Number(champ.tokenId);
+      const champTokenId = Number(champ.championTokenId ?? champ.attributes?.["Champion Token ID"]?.[0]);
       if (!isNaN(tokenId)) {
-        lookup.set(tokenId, {
+        const entry = {
           name: champ.name ?? `#${tokenId}`,
           championClass: champ.class ?? "Unknown",
-        });
+          championTokenId: !isNaN(champTokenId) ? champTokenId : undefined,
+        };
+        // Index by NFT tokenId
+        lookup.set(tokenId, entry);
+        // Also index by championTokenId for H2H lookups
+        if (!isNaN(champTokenId)) {
+          lookup.set(champTokenId, entry);
+        }
       }
     }
   } catch (err) {
