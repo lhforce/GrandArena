@@ -251,3 +251,29 @@
 - [x] Update scoreChampion to rank by: avgScore first, then winRate, then other stats
 - [x] Update tests for new scoring (no rarity multiplier)
 - [x] Update legendaryAdvisor ranking to use same priority order (avgScore → winRate → kills/balls/wart)
+
+## Bug Fix: Wrong Scheme Card Selected in Optimizer
+- [x] Fix scheme selection: trait-based schemes (e.g. Divine Intervention) should only be chosen if at least 1 champion in the lineup qualifies for the trait bonus
+- [x] Ensure selectBestScheme() evaluates actual bonus earned given the specific lineup, not just theoretical max
+- [x] Write/update tests for scheme selection with trait-filtered schemes
+
+## Optimizer Pipeline Audit — Bugs Found & Fixed
+- [x] BUG 1 (FIXED): lineupRouter hardcoded hasTraitFilter=false and qualifyingChampionIds=[] for ALL schemes — trait-based schemes (Divine Intervention etc.) gave +25 bonus to every champion regardless of trait
+- [x] BUG 2 (FIXED): Champion lineup is built with scheme=null THEN scheme is selected — fixed to co-optimize lineup+scheme together
+- [x] BUG 3 (INVESTIGATED): blendStats() rarity division is intentional — empirical avgScore includes rarity multiplier from GA scoring, so division is correct
+- [x] BUG 4 (FIXED): ONE_OF_EACH rarityRestriction now has explicit case in filterByRarity
+- [x] BUG 5 (FIXED): selectBestScheme now skips trait schemes with 0 qualifying champions in lineup (early return with score=0)
+
+## Repurpose Swap Advisor + Matchup Intel
+- [x] Repurpose Swap Advisor → Opponent Crusher (given opponent lineup, suggest best counter-lineup from owned cards)
+- [x] Repurpose Matchup Intel → Meta Report (top performing champions by win rate + avg score + marketplace floor prices)
+- [x] New page: Champion Deep Dive (full champion profile: stats, best/worst matchups, rarity marketplace prices)
+- [x] Update sidebar navigation (new menu items: Opponent Crusher, Meta Report, Champion Deep Dive, Legendary Advisor)
+- [x] Write tests for new backend procedures (201 total tests pass)
+
+## UI Redesign — Moku.gg + Grand Arena Inspired
+- [x] Research Moku.gg and fantasy.grandarena.gg design language
+- [x] Update global CSS variables and theme (index.css) — deep navy blue, gold/lime/pink accents, Nunito font
+- [x] Redesign DashboardLayout sidebar with GA-inspired style (lime active links, gold avatar border)
+- [x] Apply consistent design language across all pages (cards, tables, badges, buttons)
+- [x] Larry requested: no yellow background, use deep blue instead

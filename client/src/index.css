@@ -1,7 +1,8 @@
 /* 
- * Design Philosophy: Premium Dark Gaming Dashboard
- * Deep navy/slate dark theme, glassmorphism panels, vibrant gold/teal accents
- * Fonts: Rajdhani (display/techy) + DM Sans (body) + JetBrains Mono (addresses)
+ * Design: Grand Arena — Deep Blue Gaming Dashboard
+ * Inspired by fantasy.grandarena.gg + Moku.gg
+ * Deep navy blue base, gold/neon-green accents, chunky Nunito typography
+ * Colors: Deep navy bg, gold highlights, lime-green nav, hot-pink CTAs, purple accents
  */
 
 @import "tailwindcss";
@@ -47,50 +48,56 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  /* Custom game colors */
-  --color-gold: oklch(0.78 0.16 85);
-  --color-teal: oklch(0.72 0.15 185);
+  /* Custom game colors — GA palette */
+  --color-gold: oklch(0.80 0.17 82);          /* Warm gold */
+  --color-lime: oklch(0.82 0.22 145);          /* Neon lime/green — nav links */
+  --color-pink: oklch(0.65 0.28 350);          /* Hot pink — CTAs */
+  --color-teal: oklch(0.72 0.15 185);          /* Teal — positive stats */
+  --color-purple: oklch(0.58 0.22 295);        /* Purple — scheme cards */
   --color-rarity-basic: oklch(0.65 0.02 250);
   --color-rarity-rare: oklch(0.65 0.18 240);
   --color-rarity-epic: oklch(0.6 0.22 295);
-  --color-rarity-legendary: oklch(0.75 0.18 60);
+  --color-rarity-legendary: oklch(0.80 0.17 82);
 }
 
 :root {
-  --radius: 0.75rem;
-  /* Dark gaming theme */
-  --background: oklch(0.12 0.02 260);
-  --foreground: oklch(0.92 0.01 260);
-  --card: oklch(0.16 0.025 260);
-  --card-foreground: oklch(0.92 0.01 260);
-  --popover: oklch(0.16 0.025 260);
-  --popover-foreground: oklch(0.92 0.01 260);
-  --primary: oklch(0.78 0.16 85);
-  --primary-foreground: oklch(0.12 0.02 260);
-  --secondary: oklch(0.22 0.03 260);
-  --secondary-foreground: oklch(0.85 0.01 260);
-  --muted: oklch(0.2 0.025 260);
-  --muted-foreground: oklch(0.58 0.02 260);
-  --accent: oklch(0.72 0.15 185);
-  --accent-foreground: oklch(0.12 0.02 260);
+  --radius: 0.875rem;  /* Slightly more rounded — Moku.gg style */
+
+  /* Deep navy blue base — GA shop inspired */
+  --background: oklch(0.13 0.04 265);          /* Deep navy */
+  --foreground: oklch(0.94 0.01 260);          /* Near-white text */
+  --card: oklch(0.17 0.05 265);               /* Slightly lighter navy card */
+  --card-foreground: oklch(0.94 0.01 260);
+  --popover: oklch(0.17 0.05 265);
+  --popover-foreground: oklch(0.94 0.01 260);
+  --primary: oklch(0.80 0.17 82);             /* Gold — primary action */
+  --primary-foreground: oklch(0.12 0.03 265);
+  --secondary: oklch(0.21 0.06 265);          /* Slightly lighter navy */
+  --secondary-foreground: oklch(0.88 0.01 260);
+  --muted: oklch(0.19 0.05 265);
+  --muted-foreground: oklch(0.56 0.03 260);
+  --accent: oklch(0.82 0.22 145);             /* Lime green — accent/active */
+  --accent-foreground: oklch(0.12 0.03 265);
   --destructive: oklch(0.65 0.22 25);
   --destructive-foreground: oklch(0.98 0 0);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.78 0.16 85);
-  --chart-1: oklch(0.78 0.16 85);
-  --chart-2: oklch(0.72 0.15 185);
-  --chart-3: oklch(0.6 0.22 295);
+  --ring: oklch(0.80 0.17 82);               /* Gold focus ring */
+  --chart-1: oklch(0.80 0.17 82);
+  --chart-2: oklch(0.82 0.22 145);
+  --chart-3: oklch(0.58 0.22 295);
   --chart-4: oklch(0.65 0.18 240);
-  --chart-5: oklch(0.75 0.18 60);
-  --sidebar: oklch(0.14 0.025 260);
-  --sidebar-foreground: oklch(0.92 0.01 260);
-  --sidebar-primary: oklch(0.78 0.16 85);
-  --sidebar-primary-foreground: oklch(0.12 0.02 260);
-  --sidebar-accent: oklch(0.22 0.03 260);
-  --sidebar-accent-foreground: oklch(0.85 0.01 260);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.78 0.16 85);
+  --chart-5: oklch(0.65 0.28 350);
+
+  /* Sidebar — darker navy, GA shop nav style */
+  --sidebar: oklch(0.10 0.04 265);            /* Darkest navy for sidebar */
+  --sidebar-foreground: oklch(0.88 0.01 260);
+  --sidebar-primary: oklch(0.82 0.22 145);    /* Lime green for active items */
+  --sidebar-primary-foreground: oklch(0.10 0.03 265);
+  --sidebar-accent: oklch(0.17 0.05 265);
+  --sidebar-accent-foreground: oklch(0.88 0.01 260);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: oklch(0.80 0.17 82);
 }
 
 @layer base {
@@ -99,12 +106,12 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: 'DM Sans', system-ui, sans-serif;
+    font-family: 'Nunito Sans', 'Nunito', system-ui, sans-serif;
   }
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Rajdhani', system-ui, sans-serif;
-    font-weight: 700;
-    letter-spacing: 0.02em;
+    font-family: 'Nunito', system-ui, sans-serif;
+    font-weight: 800;
+    letter-spacing: -0.01em;
   }
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),
@@ -148,36 +155,51 @@
     }
   }
 
-  /* Glass card effect */
+  /* Glass card — GA style with blue tint */
   .glass-card {
     background: oklch(1 0 0 / 4%);
     border: 1px solid oklch(1 0 0 / 10%);
     backdrop-filter: blur(12px);
   }
 
+  /* GA-style card with gold border */
+  .ga-card {
+    background: oklch(0.17 0.05 265);
+    border: 1.5px solid oklch(0.80 0.17 82 / 25%);
+    border-radius: var(--radius-xl);
+  }
+  .ga-card:hover {
+    border-color: oklch(0.80 0.17 82 / 50%);
+  }
+
+  /* Dashed gold border — GA shop style */
+  .border-dashed-gold {
+    border: 2px dashed oklch(0.80 0.17 82 / 40%);
+  }
+
   /* Rarity border colors */
   .rarity-basic { border-color: oklch(0.55 0.03 250); }
   .rarity-rare { border-color: oklch(0.55 0.18 240); }
   .rarity-epic { border-color: oklch(0.55 0.22 295); }
-  .rarity-legendary { border-color: oklch(0.75 0.18 60); }
+  .rarity-legendary { border-color: oklch(0.80 0.17 82); }
 
   /* Rarity glow */
   .rarity-glow-basic { box-shadow: 0 0 12px oklch(0.55 0.03 250 / 40%); }
   .rarity-glow-rare { box-shadow: 0 0 12px oklch(0.55 0.18 240 / 50%); }
   .rarity-glow-epic { box-shadow: 0 0 12px oklch(0.55 0.22 295 / 50%); }
-  .rarity-glow-legendary { box-shadow: 0 0 16px oklch(0.75 0.18 60 / 60%); }
+  .rarity-glow-legendary { box-shadow: 0 0 16px oklch(0.80 0.17 82 / 60%); }
 
   /* Rarity text */
   .text-rarity-basic { color: oklch(0.7 0.04 250); }
   .text-rarity-rare { color: oklch(0.65 0.2 240); }
   .text-rarity-epic { color: oklch(0.7 0.22 295); }
-  .text-rarity-legendary { color: oklch(0.82 0.18 60); }
+  .text-rarity-legendary { color: oklch(0.82 0.17 82); }
 
   /* Rarity bg */
   .bg-rarity-basic { background-color: oklch(0.55 0.03 250 / 20%); }
   .bg-rarity-rare { background-color: oklch(0.55 0.18 240 / 20%); }
   .bg-rarity-epic { background-color: oklch(0.55 0.22 295 / 20%); }
-  .bg-rarity-legendary { background-color: oklch(0.75 0.18 60 / 20%); }
+  .bg-rarity-legendary { background-color: oklch(0.80 0.17 82 / 20%); }
 
   /* Wallet mono font */
   .font-wallet {
@@ -201,17 +223,23 @@
     transform: translateY(-3px);
   }
 
-  /* Animated gradient background */
+  /* Arena background — deep navy gradient */
   .arena-bg {
-    background: linear-gradient(135deg, oklch(0.1 0.03 265) 0%, oklch(0.13 0.04 250) 50%, oklch(0.1 0.02 280) 100%);
+    background: linear-gradient(135deg, oklch(0.10 0.05 270) 0%, oklch(0.14 0.06 260) 50%, oklch(0.11 0.04 280) 100%);
   }
 
-  /* Gold accent */
-  .text-gold { color: oklch(0.78 0.16 85); }
+  /* Color utilities */
+  .text-gold { color: oklch(0.80 0.17 82); }
+  .text-lime { color: oklch(0.82 0.22 145); }
+  .text-pink { color: oklch(0.65 0.28 350); }
   .text-teal { color: oklch(0.72 0.15 185); }
-  .bg-gold { background-color: oklch(0.78 0.16 85); }
+  .text-purple { color: oklch(0.58 0.22 295); }
+  .bg-gold { background-color: oklch(0.80 0.17 82); }
+  .bg-lime { background-color: oklch(0.82 0.22 145); }
+  .bg-pink { background-color: oklch(0.65 0.28 350); }
   .bg-teal { background-color: oklch(0.72 0.15 185); }
-  .border-gold { border-color: oklch(0.78 0.16 85); }
+  .border-gold { border-color: oklch(0.80 0.17 82); }
+  .border-lime { border-color: oklch(0.82 0.22 145); }
   .border-teal { border-color: oklch(0.72 0.15 185); }
 
   /* Owned badge */
@@ -220,10 +248,64 @@
     color: oklch(0.95 0.05 145);
   }
 
-  /* Price badge */
+  /* Price badge — gold pill like GA shop */
   .price-badge {
-    background: oklch(0.55 0.18 60 / 90%);
-    color: oklch(0.95 0.08 60);
+    background: oklch(0.80 0.17 82 / 15%);
+    border: 1px solid oklch(0.80 0.17 82 / 40%);
+    color: oklch(0.82 0.17 82);
+    border-radius: 9999px;
+    padding: 0.125rem 0.5rem;
+    font-weight: 700;
+    font-family: 'Nunito', sans-serif;
+  }
+
+  /* GA-style pill button */
+  .btn-ga-primary {
+    background: oklch(0.80 0.17 82);
+    color: oklch(0.10 0.03 265);
+    border-radius: 9999px;
+    font-weight: 800;
+    font-family: 'Nunito', sans-serif;
+    letter-spacing: 0.02em;
+    padding: 0.5rem 1.25rem;
+    transition: all 0.15s ease;
+  }
+  .btn-ga-primary:hover {
+    background: oklch(0.85 0.17 82);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px oklch(0.80 0.17 82 / 40%);
+  }
+
+  .btn-ga-pink {
+    background: oklch(0.65 0.28 350);
+    color: white;
+    border-radius: 9999px;
+    font-weight: 800;
+    font-family: 'Nunito', sans-serif;
+  }
+  .btn-ga-pink:hover {
+    background: oklch(0.70 0.28 350);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px oklch(0.65 0.28 350 / 40%);
+  }
+
+  /* Stat number — big bold GA style */
+  .stat-number {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 900;
+    font-size: 2rem;
+    color: oklch(0.80 0.17 82);
+    line-height: 1;
+  }
+
+  /* Section label — uppercase bold */
+  .section-label {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 800;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: oklch(0.56 0.03 260);
   }
 }
 
@@ -233,14 +315,14 @@
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: oklch(0.14 0.02 260);
+  background: oklch(0.12 0.04 265);
 }
 ::-webkit-scrollbar-thumb {
-  background: oklch(0.3 0.03 260);
+  background: oklch(0.28 0.05 265);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.4 0.04 260);
+  background: oklch(0.38 0.06 265);
 }
 
 /* Card image loading skeleton */
@@ -249,7 +331,7 @@
   100% { background-position: 200% 0; }
 }
 .skeleton {
-  background: linear-gradient(90deg, oklch(0.2 0.02 260) 25%, oklch(0.25 0.03 260) 50%, oklch(0.2 0.02 260) 75%);
+  background: linear-gradient(90deg, oklch(0.19 0.05 265) 25%, oklch(0.24 0.06 265) 50%, oklch(0.19 0.05 265) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
@@ -261,4 +343,13 @@
 }
 .fade-up {
   animation: fadeUp 0.4s ease forwards;
+}
+
+/* GA glow effect on hover for cards */
+@keyframes goldPulse {
+  0%, 100% { box-shadow: 0 0 8px oklch(0.80 0.17 82 / 30%); }
+  50% { box-shadow: 0 0 20px oklch(0.80 0.17 82 / 60%); }
+}
+.gold-pulse {
+  animation: goldPulse 2s ease-in-out infinite;
 }

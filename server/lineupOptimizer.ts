@@ -327,6 +327,11 @@ export function filterByRarity(
       return champions.filter(
         (c) => c.rarity === "Basic" || c.rarity === "Common" || c.rarity === "Rare"
       );
+    case "ONE_OF_EACH":
+      // One-Of-Each contests allow all rarities (one from each tier).
+      // The isOneOfEach flag in ContestRules triggers the special builder;
+      // filterByRarity just needs to pass all cards through.
+      return champions;
     case "OPEN":
     default:
       return champions;
@@ -440,6 +445,19 @@ export function selectBestScheme(
   let bestScore = -Infinity;
 
   for (const scheme of availableSchemes) {
+    // BUG 5 FIX: Trait-based schemes with zero qualifying champions in the lineup
+    // should score 0 — they provide no bonus at all, so they must not beat non-trait schemes.
+    if (scheme.hasTraitFilter && scheme.qualifyingChampionIds.length > 0) {
+      const qualifyingInLineup = champions.filter(
+        (c) => scheme.qualifyingChampionIds.includes(c.championTokenId ?? "")
+      );
+      if (qualifyingInLineup.length === 0) {
+        // No qualifying champions in lineup — this scheme gives zero bonus points.
+        // Skip it entirely; it cannot beat any scheme that provides real value.
+        continue;
+      }
+    }
+
     // Calculate raw scheme score from champion contributions
     let rawScore = 0;
     for (const champ of champions) {
@@ -546,49 +564,84 @@ export function optimizeLineups(input: OptimizerInput): OptimizerResult {
   const usedSchemeTokenIds = new Set<string>();
 
   for (let entry = 1; entry <= actualEntries; entry++) {
-    // Build lineup based on contest type
-    let slots: LineupSlot[] | null = null;
+    // BUG 2 FIX: Co-optimize lineup + scheme together.
+    // Strategy: try each available scheme, build the best lineup FOR that scheme,
+    // then pick the (scheme, lineup) pair with the highest total predicted score.
+    // This ensures trait/kill/ball-focused schemes pick champions that actually benefit.
+    const availableSchemeData = ownedSchemes.filter(
+      (s) => !usedSchemeTokenIds.has(s.tokenId)
+    );
+    const schemesToTry: Array<SchemeCardData | null> = availableSchemeData.length > 0
+      ? availableSchemeData
+      : allSchemes.length > 0 ? allSchemes : [null];
 
-    if (contestRules.isOneOfEach) {
-      slots = buildOneOfEachLineup(eligible, null, usedTokenIds);
-    } else {
-      slots = buildStandardLineup(eligible, null, usedTokenIds);
+    let bestCombinedScore = -Infinity;
+    let bestSlots: LineupSlot[] | null = null;
+    let bestScheme: SchemeCardData | null = null;
+
+    for (const candidateScheme of schemesToTry) {
+      // BUG 5 GUARD: skip trait schemes with no qualifying champions in the eligible pool
+      if (candidateScheme?.hasTraitFilter && candidateScheme.qualifyingChampionIds.length > 0) {
+        const hasQualifier = eligible.some(
+          (c) => !usedTokenIds.has(c.tokenId) &&
+            candidateScheme.qualifyingChampionIds.includes(c.championTokenId ?? "")
+        );
+        if (!hasQualifier) continue;
+      }
+
+      // Build lineup scored for this specific scheme
+      let candidateSlots: LineupSlot[] | null = null;
+      if (contestRules.isOneOfEach) {
+        candidateSlots = buildOneOfEachLineup(eligible, candidateScheme, usedTokenIds);
+      } else {
+        candidateSlots = buildStandardLineup(eligible, candidateScheme, usedTokenIds);
+      }
+      if (!candidateSlots || candidateSlots.length < 4) continue;
+
+      // Apply risk-adjusted scheme multiplier to the total score
+      const empiricalData = candidateScheme
+        ? schemeEmpirical?.get(candidateScheme.name.toLowerCase())
+        : undefined;
+      const riskMultiplier = candidateScheme
+        ? getSchemeRiskMultiplier(candidateScheme.riskLevel, empiricalData ?? null)
+        : 1.0;
+      const rawTotal = candidateSlots.reduce((sum, s) => sum + s.score, 0);
+      const adjustedTotal = rawTotal * riskMultiplier;
+
+      if (adjustedTotal > bestCombinedScore) {
+        bestCombinedScore = adjustedTotal;
+        bestSlots = candidateSlots;
+        bestScheme = candidateScheme;
+      }
     }
 
-    if (!slots || slots.length < 4) {
+    // Fallback: if no scheme produced a valid lineup (e.g. all trait schemes, no qualifiers)
+    if (!bestSlots) {
+      if (contestRules.isOneOfEach) {
+        bestSlots = buildOneOfEachLineup(eligible, null, usedTokenIds);
+      } else {
+        bestSlots = buildStandardLineup(eligible, null, usedTokenIds);
+      }
+      bestScheme = null;
+    }
+
+    if (!bestSlots || bestSlots.length < 4) {
       warnings.push(`Not enough unique cards for entry #${entry}.`);
       break;
     }
 
     // Mark cards as used
-    for (const slot of slots) {
+    for (const slot of bestSlots) {
       usedTokenIds.add(slot.champion.tokenId);
     }
-
-    // Select best scheme
-    const availableSchemeData = ownedSchemes.filter(
-      (s) => !usedSchemeTokenIds.has(s.tokenId)
-    );
-    const bestScheme = selectBestScheme(
-      slots.map((s) => s.champion),
-      availableSchemeData.length > 0 ? availableSchemeData : allSchemes,
-      schemeEmpirical
-    );
-
-    if (bestScheme && availableSchemeData.find((s) => s.tokenId === bestScheme.tokenId)) {
+    if (bestScheme && availableSchemeData.find((s) => s.tokenId === bestScheme!.tokenId)) {
       usedSchemeTokenIds.add(bestScheme.tokenId);
     }
 
-    // Re-score with the selected scheme
-    const rescoredSlots = slots.map((slot) => ({
-      ...slot,
-      score: scoreChampion(slot.champion, bestScheme),
-    }));
-
-    const predictedScore = rescoredSlots.reduce((sum, s) => sum + s.score, 0);
+    const predictedScore = bestSlots.reduce((sum, s) => sum + s.score, 0);
 
     lineups.push({
-      champions: rescoredSlots,
+      champions: bestSlots,
       scheme: bestScheme,
       schemeTokenId: bestScheme?.tokenId ?? null,
       predictedScore,

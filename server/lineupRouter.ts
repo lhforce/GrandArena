@@ -124,14 +124,16 @@ export const lineupRouter = router({
         console.error("[Optimizer] Failed to load game-data.json for schemes:", err);
       }
 
-      // Build scheme lookup by name (case-insensitive)
-      const schemeLookup = new Map<string, { description: string }>();
-      for (const gs of gameDataSchemes) {
+       // Build scheme lookup by name (case-insensitive), including trait filter data from game-data.json
+      const schemeLookup = new Map<string, { description: string; hasTraitFilter: boolean; qualifyingChampionIds: string[] }>();
+      for (const gs of gameDataSchemes as Array<{ name: string; description?: string; effect?: string; hasTraitFilter?: boolean; qualifyingChampions?: Array<{ championTokenId: string }> }>) {
+        const qualifyingIds = (gs.qualifyingChampions ?? []).map((c) => c.championTokenId);
         schemeLookup.set(gs.name.toLowerCase(), {
           description: gs.description ?? gs.effect ?? "",
+          hasTraitFilter: gs.hasTraitFilter ?? false,
+          qualifyingChampionIds: qualifyingIds,
         });
       }
-
       // Load scheme data with risk classification
       const { classifySchemeRisk, categorizeScheme: catScheme } = await import("./lineupOptimizer");
       const schemeCards: SchemeCardData[] = available.schemes.map((s) => {
@@ -142,8 +144,10 @@ export const lineupRouter = router({
           tokenId: s.tokenId,
           name: sName,
           description: desc,
-          hasTraitFilter: false,
-          qualifyingChampionIds: [],
+          // Correctly populate trait filter data so trait-based schemes (e.g. Divine Intervention)
+          // only score champions that actually qualify for the trait bonus
+          hasTraitFilter: lookup?.hasTraitFilter ?? false,
+          qualifyingChampionIds: lookup?.qualifyingChampionIds ?? [],
           category: catScheme(desc),
           riskLevel: classifySchemeRisk(sName, desc),
           imageUrl: s.imageUrl ?? null,

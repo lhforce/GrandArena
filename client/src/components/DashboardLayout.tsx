@@ -32,8 +32,9 @@ import {
   Settings,
   BarChart3,
   Sparkles,
-  Crosshair,
-  ArrowRightLeft,
+  Target,
+  TrendingUp,
+  Search,
   Crown,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
@@ -48,8 +49,9 @@ const menuItems = [
   { icon: Sparkles, label: "Lineup Builder", path: "/lineup-builder" },
   { icon: Wallet, label: "My Cards", path: "/my-cards" },
   { icon: BarChart3, label: "Champion Stats", path: "/champion-stats" },
-  { icon: Crosshair, label: "Matchup Intel", path: "/matchup-intel" },
-  { icon: ArrowRightLeft, label: "Swap Advisor", path: "/swap-advisor" },
+  { icon: Target, label: "Opponent Crusher", path: "/opponent-crusher" },
+  { icon: TrendingUp, label: "Meta Report", path: "/meta-report" },
+  { icon: Search, label: "Champion Deep Dive", path: "/champion-deep-dive" },
   { icon: Crown, label: "Legendary Advisor", path: "/legendary-advisor" },
   { icon: Bot, label: "Telegram Alerts", path: "/telegram-alerts" },
   { icon: Settings, label: "Settings", path: "/settings" },
@@ -84,12 +86,15 @@ export default function DashboardLayout({
       <div className="flex items-center justify-center min-h-screen arena-bg px-4">
         <div className="flex flex-col items-center gap-8 p-6 sm:p-8 max-w-md w-full">
           <div className="flex flex-col items-center gap-6">
-            <div className="w-16 h-16 rounded-2xl bg-gold/20 flex items-center justify-center">
+            <div className="w-16 h-16 rounded-2xl bg-gold/20 flex items-center justify-center border border-gold/30">
               <Swords className="w-8 h-8 text-gold" />
             </div>
-            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-center font-[Rajdhani]">
-              Grand Arena Optimizer
-            </h1>
+            <div className="text-center">
+              <h1 className="text-2xl sm:text-3xl font-[Nunito] font-black tracking-tight text-white">
+                Grand Arena
+              </h1>
+              <p className="text-sm text-lime font-semibold mt-1">Optimizer</p>
+            </div>
             <p className="text-sm text-muted-foreground text-center max-w-sm">
               Sign in to access contest optimization, winning lineup analysis, and card management tools.
             </p>
@@ -99,7 +104,7 @@ export default function DashboardLayout({
               window.location.href = getLoginUrl();
             }}
             size="lg"
-            className="w-full shadow-lg hover:shadow-xl transition-all bg-gold text-background hover:bg-gold/90 h-12 text-base"
+            className="w-full shadow-lg hover:shadow-xl transition-all bg-gold text-background hover:bg-gold/90 h-12 text-base font-[Nunito] font-black rounded-full"
           >
             Sign in
           </Button>
@@ -183,30 +188,35 @@ function DashboardLayoutContent({
       <div className="relative" ref={sidebarRef}>
         <Sidebar
           collapsible="icon"
-          className="border-r-0"
+          className="border-r border-white/8"
           disableTransition={isResizing}
         >
-          <SidebarHeader className="h-14 sm:h-16 justify-center">
+          <SidebarHeader className="h-14 sm:h-16 justify-center border-b border-white/8">
             <div className="flex items-center gap-3 px-2 transition-all w-full">
               <button
                 onClick={toggleSidebar}
-                className="h-9 w-9 flex items-center justify-center hover:bg-accent rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
+                className="h-9 w-9 flex items-center justify-center hover:bg-white/8 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
                 aria-label="Toggle navigation"
               >
                 <PanelLeft className="h-4 w-4 text-muted-foreground" />
               </button>
               {!isCollapsed ? (
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-semibold tracking-tight truncate text-gold font-[Rajdhani]">
-                    GA Optimizer
-                  </span>
+                  <div className="flex flex-col min-w-0">
+                    <span className="font-[Nunito] font-black text-white tracking-tight truncate text-sm leading-none">
+                      GRAND ARENA
+                    </span>
+                    <span className="font-[Nunito] font-bold text-lime text-xs leading-none mt-0.5">
+                      Optimizer
+                    </span>
+                  </div>
                 </div>
               ) : null}
             </div>
           </SidebarHeader>
 
           <SidebarContent className="gap-0">
-            <SidebarMenu className="px-2 py-1">
+            <SidebarMenu className="px-2 py-2">
               {menuItems.map((item) => {
                 const isActive = location === item.path;
                 return (
@@ -215,16 +225,19 @@ function DashboardLayoutContent({
                       isActive={isActive}
                       onClick={() => {
                         setLocation(item.path);
-                        // Auto-close sidebar on mobile after navigation
                         if (isMobile) {
                           toggleSidebar();
                         }
                       }}
                       tooltip={item.label}
-                      className={`h-11 sm:h-10 transition-all font-normal`}
+                      className={`h-10 transition-all font-[Nunito] font-semibold rounded-xl ${
+                        isActive
+                          ? "bg-lime/15 text-lime"
+                          : "text-sidebar-foreground hover:bg-white/6 hover:text-white"
+                      }`}
                     >
                       <item.icon
-                        className={`h-4 w-4 ${isActive ? "text-gold" : ""}`}
+                        className={`h-4 w-4 shrink-0 ${isActive ? "text-lime" : "text-muted-foreground"}`}
                       />
                       <span>{item.label}</span>
                     </SidebarMenuButton>
@@ -234,20 +247,20 @@ function DashboardLayoutContent({
             </SidebarMenu>
           </SidebarContent>
 
-          <SidebarFooter className="p-3">
+          <SidebarFooter className="p-3 border-t border-white/8">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  <Avatar className="h-9 w-9 border shrink-0">
-                    <AvatarFallback className="text-xs font-medium">
+                <button className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-white/6 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <Avatar className="h-8 w-8 border border-gold/30 shrink-0">
+                    <AvatarFallback className="text-xs font-bold bg-gold/20 text-gold font-[Nunito]">
                       {user?.name?.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
-                    <p className="text-sm font-medium truncate leading-none">
+                    <p className="text-sm font-bold truncate leading-none text-white font-[Nunito]">
                       {user?.name || "-"}
                     </p>
-                    <p className="text-xs text-muted-foreground truncate mt-1.5">
+                    <p className="text-xs text-muted-foreground truncate mt-1">
                       {user?.email || "-"}
                     </p>
                   </div>
@@ -267,7 +280,7 @@ function DashboardLayoutContent({
         </Sidebar>
         {!isMobile && (
           <div
-            className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
+            className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-lime/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
             onMouseDown={() => {
               if (isCollapsed) return;
               setIsResizing(true);
@@ -279,12 +292,12 @@ function DashboardLayoutContent({
 
       <SidebarInset>
         {isMobile && (
-          <div className="flex border-b h-14 items-center justify-between bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:backdrop-blur sticky top-0 z-40">
+          <div className="flex border-b border-white/8 h-14 items-center justify-between bg-sidebar px-3 sticky top-0 z-40">
             <div className="flex items-center gap-2">
-              <SidebarTrigger className="h-10 w-10 rounded-lg bg-background" />
+              <SidebarTrigger className="h-10 w-10 rounded-lg" />
               <div className="flex items-center gap-3">
                 <div className="flex flex-col gap-0.5">
-                  <span className="tracking-tight text-foreground text-sm font-semibold font-[Rajdhani]">
+                  <span className="tracking-tight text-white text-sm font-black font-[Nunito]">
                     {activeMenuItem?.label ?? "Menu"}
                   </span>
                 </div>
@@ -293,9 +306,9 @@ function DashboardLayoutContent({
             <div className="flex items-center gap-2">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="h-9 w-9 rounded-full flex items-center justify-center hover:bg-accent/50 transition-colors">
-                    <Avatar className="h-8 w-8 border">
-                      <AvatarFallback className="text-xs font-medium">
+                  <button className="h-9 w-9 rounded-full flex items-center justify-center hover:bg-white/8 transition-colors">
+                    <Avatar className="h-8 w-8 border border-gold/30">
+                      <AvatarFallback className="text-xs font-bold bg-gold/20 text-gold font-[Nunito]">
                         {user?.name?.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>

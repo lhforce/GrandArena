@@ -35,6 +35,8 @@ import {
   getUserBenchChampions,
 } from "./swapAdvisor";
 import { getLegendaryAdvisory } from "./legendaryAdvisor";
+import { buildCounterLineup, getOwnedChampionIds } from "./opponentCrusher";
+import { getMetaReport } from "./metaReport";
 
 export const matchupRouter = router({
   /**
@@ -570,5 +572,120 @@ export const matchupRouter = router({
     .query(async ({ input, ctx }) => {
       const userId = ctx.user.id;
       return getLegendaryAdvisory(input.schemeName, userId, input.topN);
+    }),
+
+  // ─── Opponent Crusher ─────────────────────────────────────────────
+  /**
+   * Build counter-lineups from owned champions against a specific opponent lineup.
+   * Requires login — uses the user's synced card inventory.
+   */
+  buildCounterLineup: protectedProcedure
+    .input(z.object({
+      opponentChampionIds: z.array(z.number()).min(1).max(4),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.user.id;
+      const ownedIds = await getOwnedChampionIds(userId);
+      const gameData = await loadGameDataLookup();
+      const lookup = new Map<number, { name: string; championClass: string; imageUrl?: string | null }>();
+      Array.from(gameData.entries()).forEach(([id, info]) => lookup.set(Number(id), info));
+      return buildCounterLineup(input.opponentChampionIds, ownedIds, lookup);
+    }),
+
+  /**
+   * Build counter-lineup from a provided list of owned champion IDs (no login required).
+   */
+  buildCounterLineupPublic: publicProcedure
+    .input(z.object({
+      opponentChampionIds: z.array(z.number()).min(1).max(4),
+      ownedChampionIds: z.array(z.number()).min(4),
+    }))
+    .mutation(async ({ input }) => {
+      const gameData = await loadGameDataLookup();
+      const lookup = new Map<number, { name: string; championClass: string; imageUrl?: string | null }>();
+      Array.from(gameData.entries()).forEach(([id, info]) => lookup.set(Number(id), info));
+      return buildCounterLineup(input.opponentChampionIds, input.ownedChampionIds, lookup);
+    }),
+
+  // ─── Meta Report ────────────────────────────────────────────────
+  /**
+   * Get the meta report: top performing champions with match stats + marketplace prices.
+   * This is a slow query (fetches marketplace prices) — cache on the client side.
+   */
+  getMetaReport: publicProcedure
+    .input(z.object({
+      sortBy: z.enum(["winRate", "avgScore", "avgKills", "avgBalls", "totalMatches"]).default("winRate"),
+      limit: z.number().min(5).max(50).default(25),
+      minMatches: z.number().min(1).default(10),
+      includePrices: z.boolean().default(true),
+    }))
+    .query(async ({ input }) => {
+      return getMetaReport(input.sortBy, input.limit, input.minMatches, input.includePrices);
+    }),
+  // ─── Champion Deep Dive ─────────────────────────────────────────────
+  /**
+   * Get full champion profile: performance stats, best/worst matchups,
+   * rarity marketplace prices, and game data info.
+   */
+  getChampionDeepDive: publicProcedure
+    .input(z.object({
+      championTokenId: z.number(),
+    }))
+    .query(async ({ input }) => {
+      const [performance, matchups, gameData] = await Promise.all([
+        getChampionPerformance(input.championTokenId),
+        getBestWorstMatchups(input.championTokenId, 3),
+        loadGameDataLookup(),
+      ]);
+      if (!performance) return null;
+      const info = gameData.get(input.championTokenId);
+      return {
+        performance,
+        matchups,
+        imageUrl: (info as any)?.imageUrl ?? null,
+      };
+    }),
+  /**
+   * Get marketplace prices for a champion by name (all rarities).
+   * Separate query so the main deep dive loads fast.
+   */
+  getChampionPrices: publicProcedure
+    .input(z.object({ championName: z.string() }))
+    .query(async ({ input }) => {
+      // Use the same GraphQL endpoint as legendaryAdvisor
+      const GA_CARDS_CONTRACT = '0x8c811e3c958e190f5ec15fb376533a3398620500';
+      const GQL_ENDPOINT = 'https://marketplace-graphql.skymavis.com/graphql';
+      const rarities = ['Basic', 'Rare', 'Epic', 'Legendary'] as const;
+      const prices: Record<string, number | null> = {};
+      await Promise.all(rarities.map(async (rarity) => {
+        const query = `{
+          erc721Tokens(
+            tokenAddress: "${GA_CARDS_CONTRACT}",
+            from: 0, size: 1, sort: PriceAsc, auctionType: Sale,
+            criteria: [
+              {name: "Card Type", values: ["MOKI"]},
+              {name: "Rarity", values: ["${rarity}"]}
+            ],
+            name: "${input.championName.replace(/"/g, '\\"')}"
+          ) { results { order { currentPrice } } }
+        }`;
+        try {
+          const resp = await fetch(GQL_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query }),
+          });
+          const data = await resp.json() as any;
+          const r = data?.data?.erc721Tokens?.results;
+          if (r?.length > 0 && r[0]?.order?.currentPrice) {
+            prices[rarity] = Math.round(Number(BigInt(r[0].order.currentPrice)) / 1e18 * 100) / 100;
+          } else {
+            prices[rarity] = null;
+          }
+        } catch {
+          prices[rarity] = null;
+        }
+      }));
+      return prices;
     }),
 });

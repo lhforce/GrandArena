@@ -725,3 +725,97 @@ describe("selectBestScheme with risk adjustment", () => {
     expect(result).toBeDefined();
   });
 });
+
+describe("Bug fixes: trait scheme guard (Bug 5) and co-optimization (Bug 2)", () => {
+  it("selectBestScheme skips trait scheme when no qualifying champions in lineup", () => {
+    const champs = [
+      makeChampion("Rynnie", "Epic", "101"),
+      makeChampion("Lucid", "Epic", "102"),
+      makeChampion("Lil Tomato", "Epic", "103"),
+      makeChampion("Golden Nugget", "Epic", "104"),
+    ];
+    // Divine Intervention: Spirit Fur trait, qualifyingIds = ["999", "998"] (none in lineup)
+    const divineIntervention = makeScheme("Divine Intervention", "trait", true, ["999", "998"], "guaranteed");
+    const cageMatch = makeScheme("Cage Match", "combo", false, [], "reliable");
+
+    const result = selectBestScheme(champs, [divineIntervention, cageMatch]);
+    // Divine Intervention should be skipped (no qualifiers), Cage Match should win
+    expect(result?.name).toBe("Cage Match");
+  });
+
+  it("selectBestScheme picks trait scheme when qualifying champions ARE in lineup", () => {
+    const champs = [
+      makeChampion("Spirit Fox", "Epic", "101"),
+      makeChampion("Spirit Wolf", "Epic", "102"),
+      makeChampion("Lucid", "Epic", "103"),
+      makeChampion("Rynnie", "Epic", "104"),
+    ];
+    // Trait scheme qualifies for "ct-101" and "ct-102" (makeChampion prefixes with ct-)
+    const traitScheme = makeScheme("Spirit Surge", "trait", true, ["ct-101", "ct-102"], "guaranteed");
+    const killScheme = makeScheme("Kill Bonus", "kills", false, [], "reliable");
+
+    const result = selectBestScheme(champs, [traitScheme, killScheme]);
+    // Both have qualifying champions; trait scheme should not be skipped
+    expect(result).not.toBeNull();
+  });
+
+  it("selectBestScheme falls back to non-trait scheme when ALL trait schemes have no qualifiers", () => {
+    const champs = [
+      makeChampion("A", "Epic", "1"),
+      makeChampion("B", "Epic", "2"),
+      makeChampion("C", "Epic", "3"),
+      makeChampion("D", "Epic", "4"),
+    ];
+    const traitScheme1 = makeScheme("Divine Intervention", "trait", true, ["ct-999"], "guaranteed");
+    const traitScheme2 = makeScheme("Spirit Surge", "trait", true, ["ct-998"], "guaranteed");
+    const fallback = makeScheme("Cage Match", "combo", false, [], "reliable");
+
+    const result = selectBestScheme(champs, [traitScheme1, traitScheme2, fallback]);
+    expect(result?.name).toBe("Cage Match");
+  });
+
+  it("optimizeLineups co-optimizes: selects kill scheme and picks kill-heavy champions", () => {
+    // 6 champions: 2 kill-heavy, 4 ball-heavy — without co-optimization,
+    // the optimizer would pick 4 ball-heavy champions first (they have higher base score
+    // when scheme=null), then select the kill scheme for them (wasted).
+    // With co-optimization, it should pick the kill scheme AND the kill-heavy champions.
+    const killHeavy1 = makeChampion("Killer A", "Epic", "k1", { avgKills: 10, avgBalls: 0, avgWartDistance: 0, winRate: 0.5 });
+    const killHeavy2 = makeChampion("Killer B", "Epic", "k2", { avgKills: 9, avgBalls: 0, avgWartDistance: 0, winRate: 0.5 });
+    const ballHeavy1 = makeChampion("Baller A", "Epic", "b1", { avgKills: 0, avgBalls: 8, avgWartDistance: 0, winRate: 0.5 });
+    const ballHeavy2 = makeChampion("Baller B", "Epic", "b2", { avgKills: 0, avgBalls: 7, avgWartDistance: 0, winRate: 0.5 });
+    const ballHeavy3 = makeChampion("Baller C", "Epic", "b3", { avgKills: 0, avgBalls: 6, avgWartDistance: 0, winRate: 0.5 });
+    const ballHeavy4 = makeChampion("Baller D", "Epic", "b4", { avgKills: 0, avgBalls: 5, avgWartDistance: 0, winRate: 0.5 });
+
+    const killScheme = makeScheme("Kill Frenzy", "kills", false, [], "reliable");
+
+    const result = optimizeLineups({
+      ownedMokis: [killHeavy1, killHeavy2, ballHeavy1, ballHeavy2, ballHeavy3, ballHeavy4],
+      ownedSchemes: [killScheme],
+      allSchemes: [killScheme],
+      contestRules: { rarityRestriction: "OPEN", isOneOfEach: false, isStarCap: false, maxEntriesPerUser: 1, format: "STANDARD" },
+      numEntries: 1,
+      entryFee: 0,
+      dailyBudget: 5000,
+    });
+
+    expect(result.lineups).toHaveLength(1);
+    const lineup = result.lineups[0];
+    // Co-optimization should have picked the kill scheme
+    expect(lineup.scheme?.name).toBe("Kill Frenzy");
+    // And the lineup should include the kill-heavy champions
+    const names = lineup.champions.map((c) => c.champion.name);
+    expect(names).toContain("Killer A");
+    expect(names).toContain("Killer B");
+  });
+
+  it("filterByRarity passes all cards for ONE_OF_EACH restriction (Bug 4)", () => {
+    const champs = [
+      makeChampion("A", "Basic", "1"),
+      makeChampion("B", "Rare", "2"),
+      makeChampion("C", "Epic", "3"),
+      makeChampion("D", "Legendary", "4"),
+    ];
+    const result = filterByRarity(champs, "ONE_OF_EACH");
+    expect(result).toHaveLength(4);
+  });
+});
