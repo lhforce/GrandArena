@@ -8,7 +8,7 @@ import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
 import { contests, leaderboardEntries, scrapeJobs, savedLineups, favoriteContests } from "../drizzle/schema";
 import { runContestScrape, refreshActiveContests } from "./contestScraper";
-import { processUnidentifiedEntries, runIdentificationPipeline } from "./cardIdentifier";
+import { processUnidentifiedEntries, runIdentificationPipeline, isIdentificationRunning } from "./cardIdentifier";
 
 export const contestRouter = router({
   /**
@@ -202,6 +202,9 @@ export const contestRouter = router({
       topN: z.number().min(1).max(50).default(10),
     }))
     .mutation(async ({ input }) => {
+      if (isIdentificationRunning()) {
+        return { started: false, message: "AI identification is already running. Please wait for it to complete." };
+      }
       const topN = input.topN;
       console.log(`[ContestRouter] Starting AI identification (top ${topN} per contest) (non-blocking)...`);
       const idPromise = runIdentificationPipeline(topN);

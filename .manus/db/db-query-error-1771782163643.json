@@ -1,0 +1,8 @@
+{
+  "query": "SELECT id, contest_id, wallet_address, champion_names, scheme_name, projected_score, saved_at FROM saved_lineups ORDER BY saved_at DESC LIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute SELECT id, contest_id, wallet_address, champion_names, scheme_name, projected_score, saved_at FROM saved_lineups ORDER BY saved_at DESC LIMIT 20;",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 1: Unknown column 'contest_id' in 'field list'"
+  ]
+}

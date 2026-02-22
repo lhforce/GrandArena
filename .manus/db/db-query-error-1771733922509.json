@@ -1,0 +1,8 @@
+{
+  "query": "SELECT id, job_type, status, started_at, completed_at, ai_processed, error_message FROM scrape_jobs WHERE job_type = 'ai_identification' ORDER BY started_at DESC LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute SELECT id, job_type, status, started_at, completed_at, ai_processed, error_message FROM scrape_jobs WHERE job_type = 'ai_identification' ORDER BY started_at DESC LIMIT 5;",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 1: Unknown column 'job_type' in 'where clause'"
+  ]
+}

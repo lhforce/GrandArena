@@ -10,6 +10,8 @@ import { getDb } from "./db";
 import { savedLineups, contests, leaderboardEntries, userCards } from "../drizzle/schema";
 import {
   runFullMatchScrape,
+  runSeason1Scrape,
+  clearPreSeasonData,
   stopMatchScrape,
   getMatchScrapeProgress,
   scrapeSingleChampion,
@@ -17,7 +19,6 @@ import {
   getIncrementalStatus,
   startMatchScrapeCron,
   stopMatchScrapeCron,
-  runSeason1Scrape,
 } from "./matchScraper";
 import {
   getHeadToHead,
@@ -34,9 +35,14 @@ import {
   loadGameDataLookup,
   getUserBenchChampions,
 } from "./swapAdvisor";
-import { getLegendaryAdvisory } from "./legendaryAdvisor";
-import { buildCounterLineup, getOwnedChampionIds } from "./opponentCrusher";
-import { getMetaReport } from "./metaReport";
+import {
+  analyzeContestPrep,
+  getUserMokisForPrep,
+  loadSchemeData,
+} from "./contestPrep";
+
+// In-memory store for bookmarklet sessions
+const bookmarkletSessions = new Map<string, { data: any; createdAt: number }>();
 
 export const matchupRouter = router({
   /**
@@ -52,11 +58,23 @@ export const matchupRouter = router({
   }),
 
   /**
-   * Run Season 1 scrape: clears all existing match data and re-scrapes
-   * all 179 champions with the official scoring formula.
+   * Start a clean Season 1 scrape: clear pre-season data, then scrape fresh.
+   * Only fetches matches from Feb 19, 2026 onwards.
    */
-  runSeason1Scrape: publicProcedure.mutation(async () => {
-    return runSeason1Scrape();
+  startSeason1Scrape: publicProcedure.mutation(async () => {
+    // Run in background (don't await)
+    runSeason1Scrape().catch((err) =>
+      console.error("[MatchupRouter] Season 1 scrape failed:", err)
+    );
+    return { started: true, message: "Season 1 scrape started — clearing old data and re-scraping from Feb 19" };
+  }),
+
+  /**
+   * Clear all pre-season match data (before Feb 19, 2026).
+   */
+  clearPreSeasonData: publicProcedure.mutation(async () => {
+    const result = await clearPreSeasonData();
+    return result;
   }),
 
   /**
@@ -209,8 +227,12 @@ export const matchupRouter = router({
   analyzeSwaps: publicProcedure
     .input(
       z.object({
-        yourChampionIds: z.array(z.number()).length(4),
-        opponentChampionIds: z.array(z.number()).length(4),
+        slots: z.array(
+          z.object({
+            championTokenId: z.number(),
+            opponents: z.array(z.number()).min(1).max(10),
+          })
+        ).min(1).max(4),
         benchChampionIds: z.array(z.number()).optional(),
       })
     )
@@ -218,14 +240,14 @@ export const matchupRouter = router({
       const gameData = await loadGameDataLookup();
 
       // If no bench provided and user is logged in, get their full inventory
+      const yourIds = input.slots.map((s) => s.championTokenId);
       let benchIds = input.benchChampionIds ?? [];
       if (benchIds.length === 0 && ctx.user) {
-        benchIds = await getUserBenchChampions(ctx.user.id, input.yourChampionIds);
+        benchIds = await getUserBenchChampions(ctx.user.id, yourIds);
       }
 
       const result = await analyzeMatchupsAndRecommendSwaps(
-        input.yourChampionIds,
-        input.opponentChampionIds,
+        input.slots,
         benchIds,
         gameData
       );
@@ -428,7 +450,12 @@ export const matchupRouter = router({
     .input(
       z.object({
         lineupId: z.number(),
-        opponentChampionIds: z.array(z.number()).length(4),
+        // 4 slots, each with up to 5 opponent championTokenIds
+        opponentSlots: z.array(
+          z.object({
+            opponents: z.array(z.number()).min(1).max(10),
+          })
+        ).min(1).max(4),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -478,7 +505,6 @@ export const matchupRouter = router({
         if (champId && !isNaN(champId)) {
           yourChampionIds.push(champId);
         } else {
-          // Fallback: check if the nftId itself is a championTokenId
           const asNum = Number(nftId);
           if (!isNaN(asNum) && gameData.has(asNum)) {
             yourChampionIds.push(asNum);
@@ -493,12 +519,17 @@ export const matchupRouter = router({
         );
       }
 
+      // Build slots with opponents
+      const slots = yourChampionIds.map((champId, idx) => ({
+        championTokenId: champId,
+        opponents: input.opponentSlots[idx]?.opponents ?? [],
+      }));
+
       // Get user's full bench (all owned MOKIs minus the ones in this lineup)
       const benchIds = await getUserBenchChampions(ctx.user.id, yourChampionIds);
 
       const result = await analyzeMatchupsAndRecommendSwaps(
-        yourChampionIds,
-        input.opponentChampionIds,
+        slots,
         benchIds,
         gameData
       );
@@ -521,6 +552,123 @@ export const matchupRouter = router({
         contestName,
         entryNumber: lineup.entryNumber,
       };
+    }),
+
+  // ─── Contest Prep (Proactive Opponent Scouting) ────────────────────
+
+  /**
+   * Contest Prep: Given opponent matchups (4 slots × 5 opponents each),
+   * find the optimal MOKIs from the user's collection and best Scheme card.
+   */
+  contestPrep: protectedProcedure
+    .input(
+      z.object({
+        slots: z.array(
+          z.object({
+            slotIndex: z.number(),
+            opponentIds: z.array(z.number()),
+            opponentNames: z.array(z.string()),
+          })
+        ).min(1).max(4),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const gameData = await loadGameDataLookup();
+      const schemeData = await loadSchemeData();
+      const userMokis = await getUserMokisForPrep(ctx.user.id);
+
+      if (userMokis.length === 0) {
+        throw new Error(
+          "No MOKIs found in your collection. Please sync your cards first in My Cards."
+        );
+      }
+
+      const result = await analyzeContestPrep(
+        input.slots,
+        userMokis,
+        gameData,
+        schemeData
+      );
+
+      return result;
+    }),
+
+  /**
+   * Receive matchup data from the bookmarklet.
+   * Stores it temporarily and returns a session token for the UI to fetch.
+   */
+  bookmarkletIngest: publicProcedure
+    .input(
+      z.object({
+        contestId: z.string().optional(),
+        entryId: z.string().optional(),
+        contestName: z.string().optional(),
+        slots: z.array(
+          z.object({
+            slotIndex: z.number(),
+            yourMoki: z.object({
+              name: z.string(),
+              tokenId: z.string().optional(),
+            }),
+            opponents: z.array(
+              z.object({
+                name: z.string(),
+                tokenId: z.string().optional(),
+              })
+            ),
+          })
+        ),
+        timestamp: z.number(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      // Store in memory with a session key
+      const sessionKey = `bm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      bookmarkletSessions.set(sessionKey, {
+        data: input,
+        createdAt: Date.now(),
+      });
+
+      // Clean up old sessions (>30 min)
+      const cutoff = Date.now() - 30 * 60 * 1000;
+      Array.from(bookmarkletSessions.entries()).forEach(([key, val]) => {
+        if (val.createdAt < cutoff) bookmarkletSessions.delete(key);
+      });
+
+      return { sessionKey, received: true };
+    }),
+
+  /**
+   * Fetch bookmarklet data by session key (polled by the UI).
+   */
+  bookmarkletFetch: publicProcedure
+    .input(z.object({ sessionKey: z.string() }))
+    .query(async ({ input }) => {
+      const session = bookmarkletSessions.get(input.sessionKey);
+      if (!session) return { found: false, data: null };
+      return { found: true, data: session.data };
+    }),
+
+  /**
+   * Get the latest bookmarklet session (for auto-detection).
+   */
+  bookmarkletLatest: publicProcedure
+    .query(async () => {
+      // Find the most recent session
+      let latestEntry: { key: string; data: any; createdAt: number } | null = null;
+      const entries = Array.from(bookmarkletSessions.entries());
+      for (let i = 0; i < entries.length; i++) {
+        const [key, val] = entries[i];
+        if (!latestEntry || val.createdAt > latestEntry.createdAt) {
+          latestEntry = { key, data: val.data, createdAt: val.createdAt };
+        }
+      }
+      if (!latestEntry) return { found: false as const, data: null, sessionKey: null };
+      // Only return if less than 5 minutes old
+      if (Date.now() - latestEntry.createdAt > 5 * 60 * 1000) {
+        return { found: false as const, data: null, sessionKey: null };
+      }
+      return { found: true as const, data: latestEntry.data, sessionKey: latestEntry.key };
     }),
 
   // ─── Cron Job Management ──────────────────────────────────────────
@@ -558,134 +706,4 @@ export const matchupRouter = router({
     stopMatchScrapeCron();
     return { stopped: true };
   }),
-
-  /**
-   * Legendary Card Acquisition Advisor
-   * Ranks best MOKIs for a scheme, checks legendary ownership,
-   * fetches marketplace prices, and calculates cheapest acquisition path.
-   */
-  getLegendaryAdvisory: protectedProcedure
-    .input(z.object({
-      schemeName: z.string(),
-      topN: z.number().min(1).max(20).default(10),
-    }))
-    .query(async ({ input, ctx }) => {
-      const userId = ctx.user.id;
-      return getLegendaryAdvisory(input.schemeName, userId, input.topN);
-    }),
-
-  // ─── Opponent Crusher ─────────────────────────────────────────────
-  /**
-   * Build counter-lineups from owned champions against a specific opponent lineup.
-   * Requires login — uses the user's synced card inventory.
-   */
-  buildCounterLineup: protectedProcedure
-    .input(z.object({
-      opponentChampionIds: z.array(z.number()).min(1).max(4),
-    }))
-    .mutation(async ({ input, ctx }) => {
-      const userId = ctx.user.id;
-      const ownedIds = await getOwnedChampionIds(userId);
-      const gameData = await loadGameDataLookup();
-      const lookup = new Map<number, { name: string; championClass: string; imageUrl?: string | null }>();
-      Array.from(gameData.entries()).forEach(([id, info]) => lookup.set(Number(id), info));
-      return buildCounterLineup(input.opponentChampionIds, ownedIds, lookup);
-    }),
-
-  /**
-   * Build counter-lineup from a provided list of owned champion IDs (no login required).
-   */
-  buildCounterLineupPublic: publicProcedure
-    .input(z.object({
-      opponentChampionIds: z.array(z.number()).min(1).max(4),
-      ownedChampionIds: z.array(z.number()).min(4),
-    }))
-    .mutation(async ({ input }) => {
-      const gameData = await loadGameDataLookup();
-      const lookup = new Map<number, { name: string; championClass: string; imageUrl?: string | null }>();
-      Array.from(gameData.entries()).forEach(([id, info]) => lookup.set(Number(id), info));
-      return buildCounterLineup(input.opponentChampionIds, input.ownedChampionIds, lookup);
-    }),
-
-  // ─── Meta Report ────────────────────────────────────────────────
-  /**
-   * Get the meta report: top performing champions with match stats + marketplace prices.
-   * This is a slow query (fetches marketplace prices) — cache on the client side.
-   */
-  getMetaReport: publicProcedure
-    .input(z.object({
-      sortBy: z.enum(["winRate", "avgScore", "avgKills", "avgBalls", "totalMatches"]).default("winRate"),
-      limit: z.number().min(5).max(50).default(25),
-      minMatches: z.number().min(1).default(10),
-      includePrices: z.boolean().default(true),
-    }))
-    .query(async ({ input }) => {
-      return getMetaReport(input.sortBy, input.limit, input.minMatches, input.includePrices);
-    }),
-  // ─── Champion Deep Dive ─────────────────────────────────────────────
-  /**
-   * Get full champion profile: performance stats, best/worst matchups,
-   * rarity marketplace prices, and game data info.
-   */
-  getChampionDeepDive: publicProcedure
-    .input(z.object({
-      championTokenId: z.number(),
-    }))
-    .query(async ({ input }) => {
-      const [performance, matchups, gameData] = await Promise.all([
-        getChampionPerformance(input.championTokenId),
-        getBestWorstMatchups(input.championTokenId, 3),
-        loadGameDataLookup(),
-      ]);
-      if (!performance) return null;
-      const info = gameData.get(input.championTokenId);
-      return {
-        performance,
-        matchups,
-        imageUrl: (info as any)?.imageUrl ?? null,
-      };
-    }),
-  /**
-   * Get marketplace prices for a champion by name (all rarities).
-   * Separate query so the main deep dive loads fast.
-   */
-  getChampionPrices: publicProcedure
-    .input(z.object({ championName: z.string() }))
-    .query(async ({ input }) => {
-      // Use the same GraphQL endpoint as legendaryAdvisor
-      const GA_CARDS_CONTRACT = '0x8c811e3c958e190f5ec15fb376533a3398620500';
-      const GQL_ENDPOINT = 'https://marketplace-graphql.skymavis.com/graphql';
-      const rarities = ['Basic', 'Rare', 'Epic', 'Legendary'] as const;
-      const prices: Record<string, number | null> = {};
-      await Promise.all(rarities.map(async (rarity) => {
-        const query = `{
-          erc721Tokens(
-            tokenAddress: "${GA_CARDS_CONTRACT}",
-            from: 0, size: 1, sort: PriceAsc, auctionType: Sale,
-            criteria: [
-              {name: "Card Type", values: ["MOKI"]},
-              {name: "Rarity", values: ["${rarity}"]}
-            ],
-            name: "${input.championName.replace(/"/g, '\\"')}"
-          ) { results { order { currentPrice } } }
-        }`;
-        try {
-          const resp = await fetch(GQL_ENDPOINT, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query }),
-          });
-          const data = await resp.json() as any;
-          const r = data?.data?.erc721Tokens?.results;
-          if (r?.length > 0 && r[0]?.order?.currentPrice) {
-            prices[rarity] = Math.round(Number(BigInt(r[0].order.currentPrice)) / 1e18 * 100) / 100;
-          } else {
-            prices[rarity] = null;
-          }
-        } catch {
-          prices[rarity] = null;
-        }
-      }));
-      return prices;
-    }),
 });

@@ -1,0 +1,8 @@
+{
+  "query": "\nSELECT \n  sl.id,\n  sl.contestId,\n  sl.entryNumber,\n  sl.champion1TokenId,\n  sl.champion2TokenId,\n  sl.champion3TokenId,\n  sl.champion4TokenId,\n  sl.schemeTokenId,\n  sl.predictedScore,\n  sl.actualScore,\n  sl.status,\n  sl.isWinningLineup,\n  sl.createdAt,\n  c.name as contestName,\n  c.status as contestStatus,\n  c.rarity_restriction,\n  c.start_time,\n  c.end_time\nFROM saved_lineups sl\nLEFT JOIN contests c ON sl.contestId = c.id\nORDER BY sl.createdAt DESC\nLIMIT 30;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute \nSELECT \n  sl.id,\n  sl.contestId,\n  sl.entryNumber,\n  sl.champion1TokenId,\n  sl.champion2TokenId,\n  sl.champion3TokenId,\n  sl.champion4TokenId,\n  sl.schemeTokenId,\n  sl.predictedScore,\n  sl.actualScore,\n  sl.status,\n  sl.isWinningLineup,\n  sl.createdAt,\n  c.name as contestName,\n  c.status as contestStatus,\n  c.rarity_restriction,\n  c.start_time,\n  c.end_time\nFROM saved_lineups sl\nLEFT JOIN contests c ON sl.contestId = c.id\nORDER BY sl.createdAt DESC\nLIMIT 30;\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 2: Unknown column 'c.status' in 'field list'"
+  ]
+}

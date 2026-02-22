@@ -63,6 +63,13 @@ async function startServer() {
 }
 
 startServer().then(() => {
+  // Clean up stale AI identification jobs from previous server session
+  import("../cardIdentifier").then(({ cleanupStaleIdentificationJobs }) => {
+    cleanupStaleIdentificationJobs();
+  }).catch((err) => {
+    console.error("[Startup] Failed to clean up stale jobs:", err);
+  });
+
   // Start the hourly incremental match scrape cron job
   import("../matchScraper").then(({ startMatchScrapeCron }) => {
     startMatchScrapeCron();

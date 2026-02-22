@@ -1,6 +1,6 @@
 {
-  "query": "DESCRIBE match_player_stats",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute DESCRIBE match_player_stats",
+  "query": "DESCRIBE match_player_stats;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute DESCRIBE match_player_stats;",
   "rows": [
     {
       "Field": "id",
@@ -89,18 +89,10 @@
       "Key": "MUL",
       "Default": "NULL",
       "Extra": ""
-    },
-    {
-      "Field": "score",
-      "Type": "decimal(10,2)",
-      "Null": "YES",
-      "Key": "",
-      "Default": "0",
-      "Extra": ""
     }
   ],
   "messages": [],
-  "stdout": "Field\tType\tNull\tKey\tDefault\tExtra\nid\tint(11)\tNO\tPRI\tNULL\tauto_increment\nmatchId\tvarchar(64)\tNO\tMUL\tNULL\t\nchampionTokenId\tint(11)\tNO\tMUL\tNULL\t\nchampionName\tvarchar(128)\tYES\t\tNULL\t\nchampionClass\tvarchar(32)\tYES\t\tNULL\t\nteam\tint(11)\tNO\t\tNULL\t\nkills\tint(11)\tYES\t\t0\t\nballs\tint(11)\tYES\t\t0\t\nwartDistance\tdecimal(10,2)\tYES\t\t0\t\nisWinner\ttinyint(1)\tYES\t\t0\t\nmatchDate\tvarchar(16)\tYES\tMUL\tNULL\t\nscore\tdecimal(10,2)\tYES\t\t0\t\n",
+  "stdout": "Field\tType\tNull\tKey\tDefault\tExtra\nid\tint(11)\tNO\tPRI\tNULL\tauto_increment\nmatchId\tvarchar(64)\tNO\tMUL\tNULL\t\nchampionTokenId\tint(11)\tNO\tMUL\tNULL\t\nchampionName\tvarchar(128)\tYES\t\tNULL\t\nchampionClass\tvarchar(32)\tYES\t\tNULL\t\nteam\tint(11)\tNO\t\tNULL\t\nkills\tint(11)\tYES\t\t0\t\nballs\tint(11)\tYES\t\t0\t\nwartDistance\tdecimal(10,2)\tYES\t\t0\t\nisWinner\ttinyint(1)\tYES\t\t0\t\nmatchDate\tvarchar(16)\tYES\tMUL\tNULL\t\n",
   "stderr": "",
-  "execution_time_ms": 49
+  "execution_time_ms": 51
 }

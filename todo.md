@@ -213,67 +213,104 @@
 - [x] Eliminate manual MOKI input (keep as fallback option)
 - [x] Write tests for auto-populate logic
 
-## Wart Distance Coefficient Fix
-- [x] Fix wart coefficient from 0.001 to ~1.257 in scoring engine
-- [x] Fix wart coefficient in optimizer (lineupOptimizer.ts)
-- [x] Fix wart coefficient in champion stats (statsRouter/matchupRouter)
-- [x] Fix wart coefficient in matchup intel
-- [x] Update all tests for new wart coefficient (179/179 passing)
-- [x] Re-run Costume Party analysis with corrected scoring
+## Speed Up Match History Scraper
+- [x] Add parallel champion fetching (5 concurrent champions instead of serial)
+- [x] Reduce inter-page delay from 800ms to 200ms
+- [x] Reduce inter-champion delay from 500ms to 100ms
+- [x] Batch database inserts instead of row-by-row
+- [x] Add progress speed indicator (champions/min, matches/sec)
+
+## Swap Advisor Redesign (4×5 Format)
+- [x] Redesign swap advisor engine: each of 4 MOKI slots faces 5 different opponents (20 total matches)
+- [x] Update data model: SlotMatchup = { slotIndex, yourMoki, opponents: [5 opponents] }
+- [x] Optimize swap scoring across all 5 opponents per slot (not just 1)
+- [x] Redesign UI: show 4 MOKI slots with 5 opponent cards each
+- [x] Allow inputting 5 opponents per slot (manual mode)
+- [x] Auto-populate from contest data if available
+- [x] Swap recommendation: "For slot X, swap A for B — improves avg win rate across 5 opponents by Y%"
+- [x] Write tests for new 4×5 swap logic
+
+## Bug Fixes Round 10
+- [x] Fix duplicate AI identification jobs running concurrently — add concurrency guard
+- [x] Fix H2H match scraper stopping after 10-15 seconds instead of completing all 179 champions
+
+## Auto-Detect Opponents from GA Fantasy API
+- [ ] Investigate GA Fantasy contest API for matchup/opponent data (which MOKIs face which)
+- [ ] Build opponent auto-detection from GA contest API (fetch round matchups)
+- [ ] Update Swap Advisor to auto-populate all 20 matchups (4 MOKIs × 5 opponents) from API
+- [ ] Eliminate need for manual opponent entry entirely
+
+## Bookmarklet Matchup Extraction
+- [ ] Analyze GA Fantasy contest entry page DOM structure for matchup data
+- [ ] Build server-side API endpoint to receive bookmarklet matchup data
+- [ ] Create bookmarklet JS that extracts 20 matchups (4 MOKIs × 5 opponents) from GA Fantasy DOM
+- [ ] Add Bookmarklet Setup section to Swap Advisor UI with drag-to-install instructions
+- [ ] Auto-populate Swap Advisor when bookmarklet sends matchup data
+- [ ] Write tests for bookmarklet API endpoint and matchup processing
+
+## Scheme-Aware Swap Advisor
+- [ ] Analyze Scheme card trait requirements (class, element, etc.) for swap compatibility
+- [ ] Add Scheme card context to swap advisor engine (which Scheme is active for the lineup)
+- [ ] Check if replacement MOKI satisfies active Scheme card trait requirements
+- [ ] Flag swaps that break Scheme card abilities with clear warnings
+- [ ] Show tradeoff: "Better matchup but loses Scheme bonus" vs "Keeps Scheme bonus and improves matchup"
+- [ ] Prefer swaps that maintain Scheme compatibility; warn clearly about ones that don't
+- [ ] Update Swap Advisor UI to display Scheme compatibility status on each recommendation
+- [ ] Write tests for Scheme-aware swap logic
+
+## Contest Prep Workflow (Proactive Opponent Scouting)
+- [ ] Build Contest Prep engine: analyze opponents per slot, rank user's MOKIs by H2H advantage
+- [ ] Optimal MOKI selection: for each of 4 slots, find best MOKI from user's collection vs that slot's 5 opponents
+- [ ] Scheme card matching: find best Scheme card whose trait requirements match the selected 4 MOKIs
+- [ ] Build server API endpoints for Contest Prep analysis
+- [ ] Build Contest Prep UI page with guided flow: input opponents → see best MOKIs → see best Scheme
+- [ ] Support paste/manual input of opponent matchups (4 slots × 5 opponents)
+- [ ] Build bookmarklet JS to extract matchups from GA Fantasy contest entry page DOM
+- [ ] Add bookmarklet setup instructions to Contest Prep page
+- [ ] Write tests for Contest Prep engine and endpoints
+
+## Optimizer Fix: Co-optimize Scheme + MOKI Selection
+- [x] Redesign optimizer to evaluate all Schemes first, pick best 4 MOKIs per Scheme, select highest combo
+- [x] Fix scoreChampion to properly weight Scheme-specific actions (kills for kill schemes, balls for ball schemes)
+- [x] Update tests for new co-optimization logic (6 new tests: kill-heavy, ball-heavy, multi-scheme, combo, trait, MahoShojo bug fix)
+- [x] Verify end-to-end with TS checks passing (197 tests, 0 TS errors)
+
+## Bug Fixes Round 11
+- [x] Fix duplicate AI identification jobs running concurrently — stale DB records from server restart; added startup cleanup in cardIdentifier.ts + _core/index.ts
+- [x] Validate Cage Match optimizer picks against GATracker top killers — confirmed our data matches; new optimizer should pick Mokington/Dheu/Mokuna/Low Tier Phenom for Epic Cage Match
+
+## Bug Fixes Round 12
+- [x] Fix optimizer still picking MahoShojo/Peeltergeist for Cage Match — root cause: empirical blending inflated stats (MahoShojo kills 0→4.33), fixed by making match history (50+ matches) the primary data source with 80-95% weight, bypassing corrupted empirical estimates
+
+## Scheme Selection Bias Fix
+- [ ] Analyze winning lineup data to understand trait vs performance Scheme usage patterns
+- [ ] Fix Scheme scoring to properly value trait-based Schemes based on empirical winning data
+- [ ] Update optimizer to recommend trait-matched MOKI+Scheme combos (find MOKIs that match trait Schemes)
+- [ ] Verify optimizer now recommends trait Schemes when user has qualifying MOKIs
+
+## Variance-Aware Optimizer (DONE) (Trait Scheme Bias Fix)
+- [x] Add contestType field (topPercent vs winnerTakeAll) to ContestRules
+- [x] Detect contest type from contest name (Top 20%, Top 10%, etc.)
+- [x] Boost trait scheme risk multiplier for topPercent contests (consistency advantage, 1.65x)
+- [x] Penalize high-variance performance schemes for topPercent contests (0.9x)
+- [x] Update tests for variance-aware scoring (205 tests, 0 TS errors)
+
+## Season 1 Data Filter (Feb 19, 2026+)
+- [x] Update scraper to only fetch matches from Feb 19, 2026 onwards (Season 1 start)
+- [x] Stop scraping when hitting matches older than Feb 19
+- [x] Clear old match data from database (before Feb 19)
+- [x] Re-run full scrape with date filter for all 179 champions (179/179 complete, 2,474 matches, 14,844 player stats)
+- [x] Compare kill rankings against GATracker leaderboard (DHEU confirmed top killer on both)
 - [x] Deploy updated version
 
-## Official Scoring Formula Fix (Season 1)
-- [x] Update scoring constants: eliminations×80, deposits×50, wart×0.5625, win×300
-- [x] Add score field to match_player_stats schema (calculated per match)
-- [x] Update scraper to calculate and store score per match
-- [x] Migrate DB schema with pnpm db:push
-- [x] Re-scrape all 180 champions with score field (2,524 matches, 15,144 player stats)
-- [x] Update optimizer, stats, matchup intel to use real avg score
-- [x] Update all tests for new scoring formula (179/179 passing)
-- [x] Validate Fenrir avg score: DB shows 408 vs GATracker 430 (within ~5% — close enough given ongoing matches)
-- [x] Deploy updated version
+## Bug Fix: Collect 'Em All Scheme Scoring
+- [x] Fix scheme scoring for rarity-diversity schemes (Collect 'Em All: +35 per UNIQUE rarity in lineup)
+- [x] All-Epic lineup = 1 unique rarity = only +35 bonus, not +140
+- [x] Audit ALL scheme cards for similar misinterpretation of bonus conditions
+- [x] Add regression tests for rarity-diversity scheme scoring (208 tests, 0 TS errors)
 
-## Legendary Card Acquisition Advisor
-- [x] Research existing wallet inventory, marketplace pricing, and crafting mechanics in codebase
-- [x] Research Grand Arena crafting system (rarity upgrade paths, costs, materials needed)
-- [x] Build legendaryAdvisor.ts engine: rank best MOKIs per scheme, check legendary ownership
-- [x] Fetch Ronin Marketplace prices for Legendary cards of recommended MOKIs
-- [x] Calculate crafting cost path (buy lower rarity cards + craft up to Legendary)
-- [x] Compare buy-direct vs craft pricing and present most economical option
-- [x] Build tRPC procedures for legendary advisor
-- [x] Build Legendary Advisor UI (standalone page with scheme selector and acquisition table)
-- [x] Write tests for legendary advisor logic (17 tests)
-- [x] Fix JOIN bug in rankChampionsForScheme (matchId → matchHistory.matchId)
-- [x] Fix Ronin Marketplace GraphQL query (sort: PriceAsc, remove paymentToken object)
-
-## Ranking Priority Update (Avg Score → Win% → Other Stats)
-- [x] Remove rarity multiplier from scoreChampion() in lineupOptimizer.ts
-- [x] Update scoreChampion to rank by: avgScore first, then winRate, then other stats
-- [x] Update tests for new scoring (no rarity multiplier)
-- [x] Update legendaryAdvisor ranking to use same priority order (avgScore → winRate → kills/balls/wart)
-
-## Bug Fix: Wrong Scheme Card Selected in Optimizer
-- [x] Fix scheme selection: trait-based schemes (e.g. Divine Intervention) should only be chosen if at least 1 champion in the lineup qualifies for the trait bonus
-- [x] Ensure selectBestScheme() evaluates actual bonus earned given the specific lineup, not just theoretical max
-- [x] Write/update tests for scheme selection with trait-filtered schemes
-
-## Optimizer Pipeline Audit — Bugs Found & Fixed
-- [x] BUG 1 (FIXED): lineupRouter hardcoded hasTraitFilter=false and qualifyingChampionIds=[] for ALL schemes — trait-based schemes (Divine Intervention etc.) gave +25 bonus to every champion regardless of trait
-- [x] BUG 2 (FIXED): Champion lineup is built with scheme=null THEN scheme is selected — fixed to co-optimize lineup+scheme together
-- [x] BUG 3 (INVESTIGATED): blendStats() rarity division is intentional — empirical avgScore includes rarity multiplier from GA scoring, so division is correct
-- [x] BUG 4 (FIXED): ONE_OF_EACH rarityRestriction now has explicit case in filterByRarity
-- [x] BUG 5 (FIXED): selectBestScheme now skips trait schemes with 0 qualifying champions in lineup (early return with score=0)
-
-## Repurpose Swap Advisor + Matchup Intel
-- [x] Repurpose Swap Advisor → Opponent Crusher (given opponent lineup, suggest best counter-lineup from owned cards)
-- [x] Repurpose Matchup Intel → Meta Report (top performing champions by win rate + avg score + marketplace floor prices)
-- [x] New page: Champion Deep Dive (full champion profile: stats, best/worst matchups, rarity marketplace prices)
-- [x] Update sidebar navigation (new menu items: Opponent Crusher, Meta Report, Champion Deep Dive, Legendary Advisor)
-- [x] Write tests for new backend procedures (201 total tests pass)
-
-## UI Redesign — Moku.gg + Grand Arena Inspired
-- [x] Research Moku.gg and fantasy.grandarena.gg design language
-- [x] Update global CSS variables and theme (index.css) — deep navy blue, gold/lime/pink accents, Nunito font
-- [x] Redesign DashboardLayout sidebar with GA-inspired style (lime active links, gold avatar border)
-- [x] Apply consistent design language across all pages (cards, tables, badges, buttons)
-- [x] Larry requested: no yellow background, use deep blue instead
+## Bug Fix: Optimizer Only Considers Owned Cards
+- [x] Optimizer should use ALL 180 champions as the candidate pool, not just owned cards
+- [x] Owned cards are only relevant for card lockup tracking (already-entered contests)
+- [x] Update lineupRouter to pass all champions from game-data.json as the candidate pool
+- [x] Keep owned card lockup logic intact (cards in active contests can't be reused)

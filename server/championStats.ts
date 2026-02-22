@@ -61,12 +61,11 @@ export const FUR_MULTIPLIER: Record<string, number> = {
   "Light Yellow": 1.0,
 };
 
-// ─── Official Season 1 Scoring Constants ──────────────────────────────
-// Source: https://x.com/Moku_HQ/status/2021035700108358000 (Feb 10, 2026)
-const V4_KILLS_PTS = 80;       // Eliminations: 80 pts each
-const V4_BALLS_PTS = 50;       // Deposits: 50 pts each
-const V4_WART_MULTIPLIER = 0.5625; // Wart distance: 45 pts per 80 units
-const V4_WIN_BONUS = 300;      // Victory: 300 pts
+// ─── V4 Scoring Constants ────────────────────────────────────────────────────
+const V4_KILL_POINTS = 85;
+const V4_BALL_POINTS = 40;
+const V4_WART_MULTIPLIER = 0.5; // Approximate per-distance-unit
+const V4_WIN_BONUS = 200;
 
 // ─── Card Rarity Multipliers (V4) ───────────────────────────────────────────
 const RARITY_MULTIPLIER: Record<string, number> = {
@@ -214,8 +213,8 @@ export function calculateV4Score(
   rarity: string
 ): { baseScore: number; rarityScore: number } {
   const baseScore =
-    estKills * V4_KILLS_PTS +
-    estBalls * V4_BALLS_PTS +
+    estKills * V4_KILL_POINTS +
+    estBalls * V4_BALL_POINTS +
     estWartDistance * V4_WART_MULTIPLIER +
     estWinRate * V4_WIN_BONUS;
 
@@ -243,8 +242,8 @@ export function calculateSchemeScore(
   const rarityMult = RARITY_MULTIPLIER[rarity] ?? 1.0;
 
   const score =
-    estKills * V4_KILLS_PTS * weights.killWeight +
-    estBalls * V4_BALLS_PTS * weights.ballWeight +
+    estKills * V4_KILL_POINTS * weights.killWeight +
+    estBalls * V4_BALL_POINTS * weights.ballWeight +
     estWartDistance * V4_WART_MULTIPLIER * weights.wartWeight +
     estWinRate * V4_WIN_BONUS * weights.winWeight;
 

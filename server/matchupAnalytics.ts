@@ -49,7 +49,7 @@ export interface ChampionMatchPerformance {
   eliminationWins: number;
   wartWins: number;
   gachaWins: number;
-  // Per-match scoring estimate (Season 1: 80*kills + 50*balls + 0.5625*wart + 300*win)
+  // Per-match scoring estimate (V4: 85*kills + 40*balls + wart + 200*win)
   avgEstimatedScore: number;
 }
 
@@ -288,9 +288,9 @@ export async function getChampionPerformance(
   const avgWart = Number(row.avgWart) || 0;
   const winRate = totalMatches > 0 ? wins / totalMatches : 0;
 
-  // Official Season 1 scoring: kills*80 + balls*50 + wart*0.5625 + win*300
+  // V4 scoring estimate: 85*kills + 40*balls + wart + 200*winRate
   const avgEstimatedScore =
-    Math.round((80 * avgKills + 50 * avgBalls + 0.5625 * avgWart + 300 * winRate) * 100) / 100;
+    Math.round((85 * avgKills + 40 * avgBalls + avgWart + 200 * winRate) * 100) / 100;
 
   return {
     championTokenId,
@@ -397,7 +397,7 @@ export async function getAllChampionPerformance(
       gachaWins: 0,
       avgEstimatedScore:
         Math.round(
-          (80 * avgKills + 50 * avgBalls + 0.5625 * avgWart + 300 * winRate) * 100
+          (85 * avgKills + 40 * avgBalls + avgWart + 200 * winRate) * 100
         ) / 100,
     };
   });
@@ -573,9 +573,9 @@ export async function getMatchDataSummary(): Promise<{
  */
 export async function getBulkMatchPerformance(
   championTokenIds: number[]
-): Promise<Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number; totalMatches: number; avgScore: number }>> {
+): Promise<Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number; totalMatches: number }>> {
   const db = await getDb();
-  const result = new Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number; totalMatches: number; avgScore: number }>();
+  const result = new Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number; totalMatches: number }>();
   if (!db || championTokenIds.length === 0) return result;
 
   const rows = await db.execute(sql`
@@ -585,8 +585,7 @@ export async function getBulkMatchPerformance(
       ROUND(AVG(kills), 4) AS avgKills,
       ROUND(AVG(balls), 4) AS avgBalls,
       ROUND(AVG(wartDistance), 4) AS avgWart,
-      ROUND(SUM(CASE WHEN isWinner = 1 THEN 1 ELSE 0 END) / COUNT(*), 4) AS winRate,
-      ROUND(AVG(CASE WHEN score IS NOT NULL AND score > 0 THEN score ELSE NULL END), 2) AS avgScore
+      ROUND(SUM(CASE WHEN isWinner = 1 THEN 1 ELSE 0 END) / COUNT(*), 4) AS winRate
     FROM match_player_stats
     WHERE championTokenId IN (${sql.join(championTokenIds.map(id => sql`${id}`), sql`, `)})
     GROUP BY championTokenId
@@ -603,7 +602,6 @@ export async function getBulkMatchPerformance(
       avgWartDistance: Number(row.avgWart) || 0,
       winRate: Number(row.winRate) || 0,
       totalMatches: Number(row.totalMatches) || 0,
-      avgScore: Number(row.avgScore) || 0,
     });
   }
 

@@ -48,5 +48,5 @@
   "messages": [],
   "stdout": "Tables_in_Gf2jRyPKPCBM4pbKAanJar\n__drizzle_migrations\ncard_lockups\nchampion_stats\ncontests\nfavorite_contests\ngem_spending_log\nleaderboard_entries\nmatch_history\nmatch_player_stats\nmatch_scrape_progress\nsaved_lineups\nscrape_jobs\nuser_cards\nusers\n",
   "stderr": "",
-  "execution_time_ms": 50
+  "execution_time_ms": 55
 }

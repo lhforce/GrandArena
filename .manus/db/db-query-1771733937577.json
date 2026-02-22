@@ -1,0 +1,30 @@
+{
+  "query": "SELECT id, jobType, status, startedAt, completedAt, aiProcessed, contestsProcessed, entriesProcessed FROM scrape_jobs WHERE status = 'running' ORDER BY id DESC;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute SELECT id, jobType, status, startedAt, completedAt, aiProcessed, contestsProcessed, entriesProcessed FROM scrape_jobs WHERE status = 'running' ORDER BY id DESC;",
+  "rows": [
+    {
+      "id": "5",
+      "jobType": "ai_identification",
+      "status": "running",
+      "startedAt": "2026-02-21 14:28:28",
+      "completedAt": "NULL",
+      "aiProcessed": "0",
+      "contestsProcessed": "0",
+      "entriesProcessed": "0"
+    },
+    {
+      "id": "4",
+      "jobType": "ai_identification",
+      "status": "running",
+      "startedAt": "2026-02-21 14:27:35",
+      "completedAt": "NULL",
+      "aiProcessed": "0",
+      "contestsProcessed": "0",
+      "entriesProcessed": "0"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tjobType\tstatus\tstartedAt\tcompletedAt\taiProcessed\tcontestsProcessed\tentriesProcessed\n5\tai_identification\trunning\t2026-02-21 14:28:28\tNULL\t0\t0\t0\n4\tai_identification\trunning\t2026-02-21 14:27:35\tNULL\t0\t0\t0\n",
+  "stderr": "",
+  "execution_time_ms": 68
+}

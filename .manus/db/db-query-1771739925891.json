@@ -1,0 +1,50 @@
+{
+  "query": "\nSELECT 'Total matches' as metric, COUNT(*) as value FROM match_history\nUNION ALL\nSELECT 'Total player stats', COUNT(*) FROM match_player_stats\nUNION ALL\nSELECT 'Min match date', MIN(matchDate) FROM match_history\nUNION ALL\nSELECT 'Max match date', MAX(matchDate) FROM match_history\nUNION ALL\nSELECT 'Season 1 matches (>=2026-02-19)', COUNT(*) FROM match_history WHERE matchDate >= '2026-02-19'\nUNION ALL\nSELECT 'Pre-season matches (<2026-02-19)', COUNT(*) FROM match_history WHERE matchDate < '2026-02-19'\nUNION ALL\nSELECT 'NULL date matches', COUNT(*) FROM match_history WHERE matchDate IS NULL\nUNION ALL\nSELECT 'Champions completed', COUNT(*) FROM match_scrape_progress WHERE status = 'completed'\nUNION ALL\nSELECT 'Champions in_progress', COUNT(*) FROM match_scrape_progress WHERE status = 'in_progress'\nUNION ALL\nSELECT 'Champions pending', COUNT(*) FROM match_scrape_progress WHERE status = 'pending'\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute \nSELECT 'Total matches' as metric, COUNT(*) as value FROM match_history\nUNION ALL\nSELECT 'Total player stats', COUNT(*) FROM match_player_stats\nUNION ALL\nSELECT 'Min match date', MIN(matchDate) FROM match_history\nUNION ALL\nSELECT 'Max match date', MAX(matchDate) FROM match_history\nUNION ALL\nSELECT 'Season 1 matches (>=2026-02-19)', COUNT(*) FROM match_history WHERE matchDate >= '2026-02-19'\nUNION ALL\nSELECT 'Pre-season matches (<2026-02-19)', COUNT(*) FROM match_history WHERE matchDate < '2026-02-19'\nUNION ALL\nSELECT 'NULL date matches', COUNT(*) FROM match_history WHERE matchDate IS NULL\nUNION ALL\nSELECT 'Champions completed', COUNT(*) FROM match_scrape_progress WHERE status = 'completed'\nUNION ALL\nSELECT 'Champions in_progress', COUNT(*) FROM match_scrape_progress WHERE status = 'in_progress'\nUNION ALL\nSELECT 'Champions pending', COUNT(*) FROM match_scrape_progress WHERE status = 'pending'\n",
+  "rows": [
+    {
+      "metric": "Min match date",
+      "value": "2025-12-28"
+    },
+    {
+      "metric": "Max match date",
+      "value": "2026-02-22"
+    },
+    {
+      "metric": "Season 1 matches (>=2026-02-19)",
+      "value": "2414"
+    },
+    {
+      "metric": "NULL date matches",
+      "value": "43"
+    },
+    {
+      "metric": "Total matches",
+      "value": "14753"
+    },
+    {
+      "metric": "Pre-season matches (<2026-02-19)",
+      "value": "12296"
+    },
+    {
+      "metric": "Champions completed",
+      "value": "179"
+    },
+    {
+      "metric": "Champions in_progress",
+      "value": "0"
+    },
+    {
+      "metric": "Champions pending",
+      "value": "0"
+    },
+    {
+      "metric": "Total player stats",
+      "value": "88518"
+    }
+  ],
+  "messages": [],
+  "stdout": "metric\tvalue\nMin match date\t2025-12-28\nMax match date\t2026-02-22\nSeason 1 matches (>=2026-02-19)\t2414\nNULL date matches\t43\nTotal matches\t14753\nPre-season matches (<2026-02-19)\t12296\nChampions completed\t179\nChampions in_progress\t0\nChampions pending\t0\nTotal player stats\t88518\n",
+  "stderr": "",
+  "execution_time_ms": 121
+}
