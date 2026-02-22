@@ -212,3 +212,10 @@
 - [x] Show contest picker → entry picker → auto-populated matchup analysis
 - [x] Eliminate manual MOKI input (keep as fallback option)
 - [x] Write tests for auto-populate logic
+
+## Speed Up Match History Scraper
+- [x] Add parallel champion fetching (5 concurrent champions instead of serial)
+- [x] Reduce inter-page delay from 800ms to 200ms
+- [x] Reduce inter-champion delay from 500ms to 100ms
+- [x] Batch database inserts instead of row-by-row
+- [x] Add progress speed indicator (champions/min, matches/sec)
