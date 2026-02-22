@@ -232,3 +232,22 @@
 - [x] Update all tests for new scoring formula (179/179 passing)
 - [x] Validate Fenrir avg score: DB shows 408 vs GATracker 430 (within ~5% — close enough given ongoing matches)
 - [x] Deploy updated version
+
+## Legendary Card Acquisition Advisor
+- [x] Research existing wallet inventory, marketplace pricing, and crafting mechanics in codebase
+- [x] Research Grand Arena crafting system (rarity upgrade paths, costs, materials needed)
+- [x] Build legendaryAdvisor.ts engine: rank best MOKIs per scheme, check legendary ownership
+- [x] Fetch Ronin Marketplace prices for Legendary cards of recommended MOKIs
+- [x] Calculate crafting cost path (buy lower rarity cards + craft up to Legendary)
+- [x] Compare buy-direct vs craft pricing and present most economical option
+- [x] Build tRPC procedures for legendary advisor
+- [x] Build Legendary Advisor UI (standalone page with scheme selector and acquisition table)
+- [x] Write tests for legendary advisor logic (17 tests)
+- [x] Fix JOIN bug in rankChampionsForScheme (matchId → matchHistory.matchId)
+- [x] Fix Ronin Marketplace GraphQL query (sort: PriceAsc, remove paymentToken object)
+
+## Ranking Priority Update (Avg Score → Win% → Other Stats)
+- [x] Remove rarity multiplier from scoreChampion() in lineupOptimizer.ts
+- [x] Update scoreChampion to rank by: avgScore first, then winRate, then other stats
+- [x] Update tests for new scoring (no rarity multiplier)
+- [x] Update legendaryAdvisor ranking to use same priority order (avgScore → winRate → kills/balls/wart)

@@ -15,6 +15,7 @@ import TelegramAlerts from "@/pages/TelegramAlerts";
 import Settings from "@/pages/Settings";
 import MatchupIntel from "@/pages/MatchupIntel";
 import SwapAdvisor from "@/pages/SwapAdvisor";
+import LegendaryAdvisor from "@/pages/LegendaryAdvisor";
 
 function Router() {
   return (
@@ -29,6 +30,7 @@ function Router() {
         <Route path="/telegram-alerts" component={TelegramAlerts} />
         <Route path="/matchup-intel" component={MatchupIntel} />
         <Route path="/swap-advisor" component={SwapAdvisor} />
+        <Route path="/legendary-advisor" component={LegendaryAdvisor} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
       </Switch>

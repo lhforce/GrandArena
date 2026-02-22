@@ -32,6 +32,9 @@ export interface ChampionCard {
   avgWartDistance?: number;
   winRate?: number;
   totalScore?: number;
+  // Real average score from match history (primary ranking signal)
+  avgScore?: number;
+  totalMatches?: number;
 }
 
 export interface SchemeCardData {
@@ -87,12 +90,15 @@ export interface OptimizerResult {
 }
 
 // ─── Rarity Scoring Multipliers (V4) ──────────────────────────────
+// NOTE: Rarity is NOT used in champion ranking.
+// Rankings are based purely on real match performance: avg score → win rate → other stats.
+// Rarity is only checked for ownership purposes (Legendary Advisor feature).
 const RARITY_MULTIPLIER: Record<string, number> = {
   Basic: 1.0,
   Common: 1.0,
-  Rare: 1.25,
-  Epic: 1.5,
-  Legendary: 1.75,
+  Rare: 1.0,
+  Epic: 1.0,
+  Legendary: 1.0,
 };
 
 const RARITY_RANK: Record<string, number> = {
@@ -218,25 +224,49 @@ export function getSchemeRiskMultiplier(
 // ─── Champion Scoring ──────────────────────────────────────────────
 
 /**
- * Score a champion for a given scheme, considering rarity multiplier and performance stats.
+ * Score a champion for a given scheme.
+ * 
+ * Priority order (per Larry's specification):
+ * 1. Avg score (real match data — primary signal)
+ * 2. Win rate (tiebreaker)
+ * 3. Other stats (kills, balls, wart — secondary tiebreakers)
+ * 
+ * Rarity is NOT a ranking factor. It is only used for ownership checks
+ * in the Legendary Advisor feature.
  */
 export function scoreChampion(
   champion: ChampionCard,
   scheme: SchemeCardData | null,
   allChampionsInLineup?: ChampionCard[]
 ): number {
-  const multiplier = RARITY_MULTIPLIER[champion.rarity] ?? 1.0;
+  // Primary signal: real average score from match history
+  // Fall back to formula estimate if no real data available
+  let baseScore: number;
   
-  // Base score from performance stats (weighted by V4 scoring)
-  // Official Season 1 scoring: kills*80 + balls*50 + wart*0.5625 + win*300
-  const killScore = (champion.avgKills ?? 2) * 80 * multiplier;
-  const ballScore = (champion.avgBalls ?? 1) * 50 * multiplier;
-  const wartScore = (champion.avgWartDistance ?? 50) * 0.5625 * multiplier;
-  const winBonus = (champion.winRate ?? 0.3) * 300 * multiplier;
-  
-  let baseScore = killScore + ballScore + wartScore + winBonus;
+  if (champion.avgScore && champion.avgScore > 0) {
+    // Use real average score as primary signal
+    baseScore = champion.avgScore;
+  } else {
+    // Fallback: estimate from raw stats using official Season 1 formula
+    // Official Season 1 scoring: kills*80 + balls*50 + wart*0.5625 + win*300
+    const killScore = (champion.avgKills ?? 2) * 80;
+    const ballScore = (champion.avgBalls ?? 1) * 50;
+    const wartScore = (champion.avgWartDistance ?? 50) * 0.5625;
+    const winBonus = (champion.winRate ?? 0.3) * 300;
+    baseScore = killScore + ballScore + wartScore + winBonus;
+  }
 
-  // Scheme bonus
+  // Tiebreaker 1: win rate adds a small fractional boost (won't override score differences)
+  // Scale: 1% win rate difference = 0.5 point difference in score
+  const winRateBoost = (champion.winRate ?? 0.3) * 0.5;
+  baseScore += winRateBoost;
+
+  // Tiebreaker 2: kills/balls/wart add micro-boosts (won't override win rate differences)
+  const killBoost = (champion.avgKills ?? 0) * 0.01;
+  const ballBoost = (champion.avgBalls ?? 0) * 0.005;
+  baseScore += killBoost + ballBoost;
+
+  // Scheme bonus: adds points for champions that align with the scheme's scoring category
   if (scheme) {
     const qualifies = !scheme.hasTraitFilter || 
       scheme.qualifyingChampionIds.includes(champion.championTokenId ?? "");
@@ -245,32 +275,32 @@ export function scoreChampion(
       const cat = scheme.category;
       switch (cat) {
         case "kills":
-          // Kills-focused schemes boost kill-heavy champions
-          baseScore += (champion.avgKills ?? 2) * 80 * 0.5 * multiplier;
+          // Kills-focused schemes: boost kill-heavy champions
+          baseScore += (champion.avgKills ?? 2) * 80 * 0.5;
           break;
         case "balls":
-          baseScore += (champion.avgBalls ?? 1) * 50 * 0.5 * multiplier;
+          baseScore += (champion.avgBalls ?? 1) * 50 * 0.5;
           break;
         case "wart":
-          baseScore += (champion.avgWartDistance ?? 50) * 0.5625 * 0.5 * multiplier;
+          baseScore += (champion.avgWartDistance ?? 50) * 0.5625 * 0.5;
           break;
         case "win":
-          baseScore += (champion.winRate ?? 0.3) * 300 * 0.5 * multiplier;
+          baseScore += (champion.winRate ?? 0.3) * 300 * 0.5;
           break;
         case "trait":
           // Trait schemes give flat bonus per qualifying champion
-          baseScore += 25 * multiplier;
+          baseScore += 25;
           break;
         case "combo":
-          baseScore += ((champion.avgKills ?? 2) * 35 + (champion.avgBalls ?? 1) * 10) * multiplier;
+          baseScore += (champion.avgKills ?? 2) * 35 + (champion.avgBalls ?? 1) * 10;
           break;
         default:
-          baseScore += 15 * multiplier;
+          baseScore += 15;
       }
     }
   }
 
-  return Math.round(baseScore);
+  return Math.round(baseScore * 100) / 100;
 }
 
 // ─── Rarity Filter ─────────────────────────────────────────────────
@@ -443,7 +473,7 @@ export interface OptimizerInput {
   numEntries: number; // How many entries to build (1-5)
   entryFee: number; // Gems per entry
   dailyBudget: number; // Remaining daily gem budget
-  performanceStats?: Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number }>;
+  performanceStats?: Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number; avgScore?: number; totalMatches?: number }>;
   schemeEmpirical?: Map<string, { winRate: number; appearances: number; confidence: number }>;
 }
 
@@ -475,6 +505,9 @@ export function optimizeLineups(input: OptimizerInput): OptimizerResult {
       avgBalls: stats?.avgBalls ?? m.avgBalls,
       avgWartDistance: stats?.avgWartDistance ?? m.avgWartDistance,
       winRate: stats?.winRate ?? m.winRate,
+      // Real avg score from match history — primary ranking signal (no rarity multiplier)
+      avgScore: stats?.avgScore ?? m.avgScore,
+      totalMatches: stats?.totalMatches ?? m.totalMatches,
     };
   });
 

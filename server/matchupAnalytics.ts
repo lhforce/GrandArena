@@ -573,9 +573,9 @@ export async function getMatchDataSummary(): Promise<{
  */
 export async function getBulkMatchPerformance(
   championTokenIds: number[]
-): Promise<Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number; totalMatches: number }>> {
+): Promise<Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number; totalMatches: number; avgScore: number }>> {
   const db = await getDb();
-  const result = new Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number; totalMatches: number }>();
+  const result = new Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number; totalMatches: number; avgScore: number }>();
   if (!db || championTokenIds.length === 0) return result;
 
   const rows = await db.execute(sql`
@@ -585,7 +585,8 @@ export async function getBulkMatchPerformance(
       ROUND(AVG(kills), 4) AS avgKills,
       ROUND(AVG(balls), 4) AS avgBalls,
       ROUND(AVG(wartDistance), 4) AS avgWart,
-      ROUND(SUM(CASE WHEN isWinner = 1 THEN 1 ELSE 0 END) / COUNT(*), 4) AS winRate
+      ROUND(SUM(CASE WHEN isWinner = 1 THEN 1 ELSE 0 END) / COUNT(*), 4) AS winRate,
+      ROUND(AVG(CASE WHEN score IS NOT NULL AND score > 0 THEN score ELSE NULL END), 2) AS avgScore
     FROM match_player_stats
     WHERE championTokenId IN (${sql.join(championTokenIds.map(id => sql`${id}`), sql`, `)})
     GROUP BY championTokenId
@@ -602,6 +603,7 @@ export async function getBulkMatchPerformance(
       avgWartDistance: Number(row.avgWart) || 0,
       winRate: Number(row.winRate) || 0,
       totalMatches: Number(row.totalMatches) || 0,
+      avgScore: Number(row.avgScore) || 0,
     });
   }
 

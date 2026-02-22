@@ -187,7 +187,7 @@ export const lineupRouter = router({
 
       // Load match history performance data (3rd data source)
       const { getBulkMatchPerformance } = await import("./matchupAnalytics");
-      let matchPerformanceData = new Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number; totalMatches: number }>();
+      let matchPerformanceData = new Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number; totalMatches: number; avgScore: number }>();
       try {
         // Collect all championTokenIds from the user's mokis
         const champTokenIds = available.mokis
@@ -204,7 +204,7 @@ export const lineupRouter = router({
       }
 
       // Build blended performance stats (model + empirical + match history)
-      const performanceStats = new Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number }>();
+      const performanceStats = new Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number; avgScore: number; totalMatches: number }>();
       const blendMetadata: Record<string, { dataSource: string; empiricalWeight: number; appearances: number; matchHistoryMatches: number }> = {};
 
       for (const row of statsRows) {
@@ -233,6 +233,8 @@ export const lineupRouter = router({
           avgBalls: blended.avgBalls,
           avgWartDistance: blended.avgWartDistance,
           winRate: blended.winRate,
+          avgScore: 0,
+          totalMatches: 0,
         };
         let matchHistoryMatches = 0;
 
@@ -246,6 +248,9 @@ export const lineupRouter = router({
             avgBalls: Math.round((finalStats.avgBalls * (1 - matchConfidence) + matchData.avgBalls * matchConfidence) * 100) / 100,
             avgWartDistance: Math.round((finalStats.avgWartDistance * (1 - matchConfidence) + matchData.avgWartDistance * matchConfidence) * 100) / 100,
             winRate: Math.round((finalStats.winRate * (1 - matchConfidence) + matchData.winRate * matchConfidence) * 1000) / 1000,
+            // Real avg score from match history — primary ranking signal
+            avgScore: matchData.avgScore ?? 0,
+            totalMatches: matchData.totalMatches,
           };
         }
 

@@ -34,6 +34,7 @@ import {
   loadGameDataLookup,
   getUserBenchChampions,
 } from "./swapAdvisor";
+import { getLegendaryAdvisory } from "./legendaryAdvisor";
 
 export const matchupRouter = router({
   /**
@@ -555,4 +556,19 @@ export const matchupRouter = router({
     stopMatchScrapeCron();
     return { stopped: true };
   }),
+
+  /**
+   * Legendary Card Acquisition Advisor
+   * Ranks best MOKIs for a scheme, checks legendary ownership,
+   * fetches marketplace prices, and calculates cheapest acquisition path.
+   */
+  getLegendaryAdvisory: protectedProcedure
+    .input(z.object({
+      schemeName: z.string(),
+      topN: z.number().min(1).max(20).default(10),
+    }))
+    .query(async ({ input, ctx }) => {
+      const userId = ctx.user.id;
+      return getLegendaryAdvisory(input.schemeName, userId, input.topN);
+    }),
 });
