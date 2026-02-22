@@ -294,3 +294,11 @@
 - [x] Boost trait scheme risk multiplier for topPercent contests (consistency advantage, 1.65x)
 - [x] Penalize high-variance performance schemes for topPercent contests (0.9x)
 - [x] Update tests for variance-aware scoring (205 tests, 0 TS errors)
+
+## Season 1 Data Filter (Feb 19, 2026+)
+- [x] Update scraper to only fetch matches from Feb 19, 2026 onwards (Season 1 start)
+- [x] Stop scraping when hitting matches older than Feb 19
+- [x] Clear old match data from database (before Feb 19)
+- [x] Re-run full scrape with date filter for all 179 champions (179/179 complete, 2,474 matches, 14,844 player stats)
+- [x] Compare kill rankings against GATracker leaderboard (DHEU confirmed top killer on both)
+- [x] Deploy updated version

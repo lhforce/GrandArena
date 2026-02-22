@@ -1,0 +1,13 @@
+{
+  "query": "SELECT COUNT(*) as total_matches FROM match_history;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute SELECT COUNT(*) as total_matches FROM match_history;",
+  "rows": [
+    {
+      "total_matches": "14753"
+    }
+  ],
+  "messages": [],
+  "stdout": "total_matches\n14753\n",
+  "stderr": "",
+  "execution_time_ms": 60
+}

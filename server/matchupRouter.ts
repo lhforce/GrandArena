@@ -10,6 +10,8 @@ import { getDb } from "./db";
 import { savedLineups, contests, leaderboardEntries, userCards } from "../drizzle/schema";
 import {
   runFullMatchScrape,
+  runSeason1Scrape,
+  clearPreSeasonData,
   stopMatchScrape,
   getMatchScrapeProgress,
   scrapeSingleChampion,
@@ -53,6 +55,26 @@ export const matchupRouter = router({
       console.error("[MatchupRouter] Scrape failed:", err)
     );
     return { started: true, message: "Match history scrape started in background" };
+  }),
+
+  /**
+   * Start a clean Season 1 scrape: clear pre-season data, then scrape fresh.
+   * Only fetches matches from Feb 19, 2026 onwards.
+   */
+  startSeason1Scrape: publicProcedure.mutation(async () => {
+    // Run in background (don't await)
+    runSeason1Scrape().catch((err) =>
+      console.error("[MatchupRouter] Season 1 scrape failed:", err)
+    );
+    return { started: true, message: "Season 1 scrape started — clearing old data and re-scraping from Feb 19" };
+  }),
+
+  /**
+   * Clear all pre-season match data (before Feb 19, 2026).
+   */
+  clearPreSeasonData: publicProcedure.mutation(async () => {
+    const result = await clearPreSeasonData();
+    return result;
   }),
 
   /**

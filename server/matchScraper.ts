@@ -3,14 +3,15 @@
  * and stores it in the match_history + match_player_stats tables.
  *
  * Data source: GATracker n8n webhook (mokiMatches endpoint)
- * Each champion has ~900 matches, 100 per page.
- * 179 champions × ~10 pages = ~1,790 API calls for full scrape.
  *
- * OPTIMIZED v3: 10 concurrent + auto-resume on restart + page-level resume
- * + batch DB inserts + reduced delays → ~3-4 min total.
+ * SEASON 1 FILTER: Only fetches/stores matches from Feb 19, 2026 onwards.
+ * Stops paginating when it hits matches older than the cutoff date.
+ *
+ * OPTIMIZED v4: 10 concurrent + Season 1 date filter + auto-resume
+ * + batch DB inserts + reduced delays → very fast (~1-2 min for 3 days of data).
  */
 
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, lt, or } from "drizzle-orm";
 import { getDb } from "./db";
 import {
   matchHistory,
@@ -24,6 +25,13 @@ const REQUEST_DELAY_MS = 150; // 150ms between pages (~7 req/sec per champion)
 const INTER_BATCH_DELAY_MS = 50; // 50ms between batches
 const PARALLEL_CHAMPIONS = 10; // 10 champions concurrently
 const DB_BATCH_SIZE = 100; // Larger batch inserts
+
+/**
+ * Season 1 officially started on February 19, 2026.
+ * We only want match data from this date onwards.
+ * Format matches the API's matchDate field: "YYYY-MM-DD"
+ */
+const SEASON_1_START_DATE = "2026-02-19";
 
 // Standard headers required by the GATracker API
 const GATRACKER_HEADERS = {
@@ -105,6 +113,7 @@ export interface ScrapeProgress {
   startedAt: string | null;
   estimatedTimeRemaining: string | null;
   speed: string | null;
+  season1Only: boolean;
 }
 
 // ─── In-memory scrape state ────────────────────────────────────────
@@ -115,6 +124,19 @@ let currentChampionName: string | null = null;
 let currentPage = 0;
 let scrapeStartedAt: Date | null = null;
 let championsCompletedSoFar = 0;
+
+// ─── Date Helpers ─────────────────────────────────────────────────
+
+/**
+ * Check if a match date string is before the Season 1 start date.
+ * Returns true if the match is PRE-season (should be excluded).
+ */
+function isBeforeSeason1(matchDate: string | null | undefined): boolean {
+  if (!matchDate) return false; // If no date, include it (conservative)
+  // matchDate format can be "YYYY-MM-DD" or ISO string "2026-02-19T..."
+  const dateStr = matchDate.substring(0, 10); // Extract YYYY-MM-DD
+  return dateStr < SEASON_1_START_DATE;
+}
 
 // ─── API Helpers ───────────────────────────────────────────────────
 
@@ -203,13 +225,18 @@ async function storeMatchDataBatch(
     const result = match.result;
     if (!result) continue;
 
+    const matchDate = entry.matchDate || match.matchDate || null;
+
+    // SEASON 1 FILTER: Skip matches before Feb 19, 2026
+    if (isBeforeSeason1(matchDate)) continue;
+
     matchRows.push({
       matchId: entry.matchId,
       gameType: match.gameType || "mokiMayhem",
       winType: result.winType || null,
       teamWon: result.teamWon || null,
       duration: String(result.duration || 0),
-      matchDate: entry.matchDate || match.matchDate || null,
+      matchDate,
       isBye: false,
     });
 
@@ -230,7 +257,7 @@ async function storeMatchDataBatch(
         balls: playerResult?.deposits ?? 0,
         wartDistance: String(playerResult?.wartDistance ?? 0),
         isWinner,
-        matchDate: entry.matchDate || match.matchDate || null,
+        matchDate,
       });
     }
   }
@@ -296,11 +323,12 @@ async function storeMatchDataBatch(
   return { matchesInserted, statsInserted };
 }
 
-// ─── Single Champion Scraper (with page-level resume) ────────────
+// ─── Single Champion Scraper (with date-based early stop) ────────
 
 /**
  * Scrape match history for a single champion.
- * Supports resuming from a specific page (for interrupted scrapes).
+ * SEASON 1 MODE: Stops paginating as soon as ALL entries on a page
+ * are before Feb 19, 2026 (since matches are sorted newest-first).
  */
 async function scrapeChampionMatches(
   championTokenId: number,
@@ -360,6 +388,21 @@ async function scrapeChampionMatches(
       newestMatchId = response.data[0].matchId;
     }
 
+    // SEASON 1 DATE FILTER: Check if we've gone past the cutoff date.
+    // Matches are returned newest-first, so once we see a page where
+    // the LAST entry is before Season 1, we can stop after processing
+    // the Season 1 entries on this page.
+    let hitPreSeason = false;
+    if (response.data.length > 0) {
+      const lastEntry = response.data[response.data.length - 1];
+      const lastDate = lastEntry.matchDate || lastEntry.match?.matchDate;
+      if (isBeforeSeason1(lastDate)) {
+        hitPreSeason = true;
+        // Some entries on this page may still be Season 1 — storeMatchDataBatch
+        // will filter them out via isBeforeSeason1 check
+      }
+    }
+
     const { matchesInserted, statsInserted } = await storeMatchDataBatch(response.data);
     totalMatchesStored += matchesInserted;
     totalStatsStored += statsInserted;
@@ -375,6 +418,14 @@ async function scrapeChampionMatches(
         lastScrapedAt: new Date(),
       })
       .where(eq(matchScrapeProgress.championTokenId, championTokenId));
+
+    // EARLY STOP: If we hit pre-season data, no need to fetch more pages
+    if (hitPreSeason) {
+      console.log(
+        `[MatchScraper] ${championName}: Hit pre-Season 1 data on page ${page}, stopping early`
+      );
+      break;
+    }
 
     page++;
 
@@ -470,6 +521,48 @@ async function fetchChampionList(): Promise<
   }
 }
 
+// ─── Clear Pre-Season Data ───────────────────────────────────────
+
+/**
+ * Delete all match data from before Season 1 (Feb 19, 2026).
+ * Also resets scrape progress so we get a clean re-scrape.
+ */
+export async function clearPreSeasonData(): Promise<{
+  matchesDeleted: number;
+  statsDeleted: number;
+  progressReset: number;
+}> {
+  const db = await getDb();
+  if (!db) return { matchesDeleted: 0, statsDeleted: 0, progressReset: 0 };
+
+  console.log(`[MatchScraper] Clearing all match data before ${SEASON_1_START_DATE}...`);
+
+  // Delete player stats for pre-season matches
+  const statsResult = await db.execute(
+    sql`DELETE FROM match_player_stats WHERE matchDate < ${SEASON_1_START_DATE} OR matchDate IS NULL`
+  );
+  const statsDeleted = (statsResult as any)[0]?.affectedRows ?? 0;
+
+  // Delete pre-season matches
+  const matchResult = await db.execute(
+    sql`DELETE FROM match_history WHERE matchDate < ${SEASON_1_START_DATE} OR matchDate IS NULL`
+  );
+  const matchesDeleted = (matchResult as any)[0]?.affectedRows ?? 0;
+
+  // Reset all scrape progress so we re-scrape everything fresh
+  const progressResult = await db.execute(
+    sql`DELETE FROM match_scrape_progress`
+  );
+  const progressReset = (progressResult as any)[0]?.affectedRows ?? 0;
+
+  console.log(
+    `[MatchScraper] Cleared: ${matchesDeleted} matches, ${statsDeleted} player stats, ` +
+      `${progressReset} progress records deleted`
+  );
+
+  return { matchesDeleted, statsDeleted, progressReset };
+}
+
 // ─── Parallel Full Scraper ────────────────────────────────────────
 
 /**
@@ -511,8 +604,9 @@ async function scrapeChampionBatch(
 
 /**
  * Run the full match history scrape for all champions.
- * OPTIMIZED v3: 10 concurrent + auto-resume + page-level resume + batch inserts.
- * Estimated time: ~3-4 minutes for fresh scrape, faster for resume.
+ * SEASON 1 MODE: Only fetches matches from Feb 19, 2026 onwards.
+ * Stops early per champion when hitting pre-season data.
+ * Estimated time: ~1-2 minutes for 3 days of data.
  */
 export async function runFullMatchScrape(): Promise<void> {
   if (scrapeRunning) {
@@ -525,7 +619,7 @@ export async function runFullMatchScrape(): Promise<void> {
   scrapeStartedAt = new Date();
   championsCompletedSoFar = 0;
 
-  console.log("[MatchScraper] === FULL SCRAPE STARTING ===");
+  console.log(`[MatchScraper] === SEASON 1 SCRAPE STARTING (from ${SEASON_1_START_DATE}) ===`);
 
   try {
     const db = await getDb();
@@ -585,7 +679,7 @@ export async function runFullMatchScrape(): Promise<void> {
     console.log(
       `[MatchScraper] Work queue: ${workQueue.length} to scrape ` +
         `(${alreadyCompleted} already done, ${resuming} resuming) ` +
-        `— ${PARALLEL_CHAMPIONS} concurrent`
+        `— ${PARALLEL_CHAMPIONS} concurrent, Season 1 only`
     );
 
     if (workQueue.length === 0) {
@@ -617,7 +711,7 @@ export async function runFullMatchScrape(): Promise<void> {
     }
 
     console.log(
-      `[MatchScraper] === FULL SCRAPE COMPLETE === ` +
+      `[MatchScraper] === SEASON 1 SCRAPE COMPLETE === ` +
         `${championsCompletedSoFar}/${totalToProcess} champions processed`
     );
   } catch (err) {
@@ -627,6 +721,17 @@ export async function runFullMatchScrape(): Promise<void> {
     currentChampionName = null;
     currentPage = 0;
   }
+}
+
+/**
+ * Run a clean Season 1 scrape: clear old data first, then scrape fresh.
+ */
+export async function runSeason1Scrape(): Promise<void> {
+  console.log("[MatchScraper] === CLEAN SEASON 1 SCRAPE ===");
+  console.log("[MatchScraper] Step 1: Clearing pre-season data...");
+  await clearPreSeasonData();
+  console.log("[MatchScraper] Step 2: Running fresh scrape...");
+  await runFullMatchScrape();
 }
 
 /**
@@ -704,6 +809,7 @@ export async function getMatchScrapeProgress(): Promise<ScrapeProgress> {
     startedAt: scrapeStartedAt?.toISOString() ?? null,
     estimatedTimeRemaining,
     speed,
+    season1Only: true,
   };
 }
 
@@ -740,6 +846,7 @@ export interface IncrementalResult {
 /**
  * Incremental scrape for a single champion: fetch page 1 (newest matches)
  * and stop as soon as we encounter a matchId we already have.
+ * Season 1 filter is applied via storeMatchDataBatch.
  */
 async function scrapeChampionIncremental(
   championTokenId: number,
@@ -780,7 +887,7 @@ async function scrapeChampionIncremental(
       newEntries.push(entry);
     }
 
-    // Store new entries using batch insert
+    // Store new entries using batch insert (Season 1 filter applied inside)
     if (newEntries.length > 0) {
       const { matchesInserted, statsInserted } =
         await storeMatchDataBatch(newEntries);
@@ -1017,7 +1124,7 @@ export function startMatchScrapeCron(): void {
         );
         setTimeout(() => {
           if (!scrapeRunning) {
-            console.log("[MatchScraper] Auto-resuming full scrape...");
+            console.log("[MatchScraper] Auto-resuming full scrape (Season 1 only)...");
             runFullMatchScrape().catch((err) =>
               console.error("[MatchScraper] Auto-resume scrape failed:", err)
             );

@@ -1,0 +1,8 @@
+{
+  "query": "\nSELECT \n  c.name,\n  c.rarity,\n  c.token_id,\n  mps.avg_kills,\n  mps.avg_balls,\n  mps.avg_wart_distance,\n  mps.win_rate,\n  mps.match_count,\n  ROUND(mps.avg_kills * 35 + mps.avg_balls * 10, 1) AS cage_match_bonus_per_match\nFROM user_cards uc\nJOIN champions c ON c.id = uc.champion_id\nJOIN match_player_stats mps ON mps.champion_id = c.id\nWHERE mps.match_count >= 10\nORDER BY cage_match_bonus_per_match DESC\nLIMIT 20;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute \nSELECT \n  c.name,\n  c.rarity,\n  c.token_id,\n  mps.avg_kills,\n  mps.avg_balls,\n  mps.avg_wart_distance,\n  mps.win_rate,\n  mps.match_count,\n  ROUND(mps.avg_kills * 35 + mps.avg_balls * 10, 1) AS cage_match_bonus_per_match\nFROM user_cards uc\nJOIN champions c ON c.id = uc.champion_id\nJOIN match_player_stats mps ON mps.champion_id = c.id\nWHERE mps.match_count >= 10\nORDER BY cage_match_bonus_per_match DESC\nLIMIT 20;\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1146 (42S02) at line 2: Table 'gf2jrypkpcbm4pbkaanjar.champions' doesn't exist"
+  ]
+}

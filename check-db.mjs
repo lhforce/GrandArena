@@ -1,31 +1,56 @@
-import { drizzle } from 'drizzle-orm/mysql2';
 import mysql from 'mysql2/promise';
-import { sql } from 'drizzle-orm';
+import dotenv from 'dotenv';
+import { readFileSync } from 'fs';
+
+dotenv.config({ path: '.env' });
 
 const conn = await mysql.createConnection(process.env.DATABASE_URL);
-const db = drizzle(conn, { mode: 'default' });
 
-// Check table columns first
-const cols = await db.execute(sql`SHOW COLUMNS FROM match_scrape_progress`);
-console.log('Columns:', cols[0].map(c => c.Field));
+const queries = [
+  ['Total matches', 'SELECT COUNT(*) as c FROM match_history'],
+  ['Total player stats', 'SELECT COUNT(*) as c FROM match_player_stats'],
+  ['Min match date', 'SELECT MIN(matchDate) as c FROM match_history'],
+  ['Max match date', 'SELECT MAX(matchDate) as c FROM match_history'],
+  ['Season 1 matches (>=2026-02-19)', 'SELECT COUNT(*) as c FROM match_history WHERE matchDate >= "2026-02-19"'],
+  ['Pre-season matches (<2026-02-19)', 'SELECT COUNT(*) as c FROM match_history WHERE matchDate < "2026-02-19"'],
+  ['NULL date matches', 'SELECT COUNT(*) as c FROM match_history WHERE matchDate IS NULL'],
+  ['Champions completed', 'SELECT COUNT(*) as c FROM match_scrape_progress WHERE status = "completed"'],
+  ['Champions in_progress', 'SELECT COUNT(*) as c FROM match_scrape_progress WHERE status = "in_progress"'],
+  ['Champions pending', 'SELECT COUNT(*) as c FROM match_scrape_progress WHERE status = "pending"'],
+];
 
-const progress = await db.execute(sql`SELECT status, COUNT(*) as cnt FROM match_scrape_progress GROUP BY status`);
-console.log('\nScrape progress:', progress[0]);
-
-const mc = await db.execute(sql`SELECT COUNT(*) as cnt FROM match_history`);
-console.log('Total matches in DB:', mc[0][0]?.cnt);
-
-const sc = await db.execute(sql`SELECT COUNT(*) as cnt FROM match_player_stats`);
-console.log('Total player stats in DB:', sc[0][0]?.cnt);
-
-const recent = await db.execute(sql`SELECT * FROM match_scrape_progress ORDER BY last_scraped_at DESC LIMIT 10`);
-console.log('\nRecent scrape progress:');
-for (const r of recent[0]) {
-  console.log(`  ${r.champion_token_id}: status=${r.status}, pages=${r.pages_scraped}, total=${r.total_matches}, last=${r.last_scraped_at}`);
+for (const [label, q] of queries) {
+  const [rows] = await conn.execute(q);
+  console.log(`${label}: ${rows[0].c}`);
 }
 
-// Check how many unique champions are in match_player_stats
-const uniqueChamps = await db.execute(sql`SELECT COUNT(DISTINCT champion_token_id) as cnt FROM match_player_stats`);
-console.log('\nUnique champions in match data:', uniqueChamps[0][0]?.cnt);
+// Top 10 by total kills from match_player_stats
+console.log('\n--- Top 10 Total Kills (from match_player_stats, ALL data) ---');
+const [killRows] = await conn.execute(`
+  SELECT championName, championTokenId, SUM(kills) as totalKills, COUNT(*) as totalMatches, 
+         ROUND(SUM(kills)/COUNT(*), 2) as avgKills
+  FROM match_player_stats 
+  GROUP BY championTokenId, championName
+  ORDER BY totalKills DESC 
+  LIMIT 10
+`);
+for (const row of killRows) {
+  console.log(`  ${row.championName} (#${row.championTokenId}): ${row.totalKills} kills in ${row.totalMatches} matches (avg ${row.avgKills})`);
+}
+
+// Top 10 by total kills from Season 1 only
+console.log('\n--- Top 10 Total Kills (Season 1 only, >=2026-02-19) ---');
+const [s1KillRows] = await conn.execute(`
+  SELECT championName, championTokenId, SUM(kills) as totalKills, COUNT(*) as totalMatches, 
+         ROUND(SUM(kills)/COUNT(*), 2) as avgKills
+  FROM match_player_stats 
+  WHERE matchDate >= '2026-02-19'
+  GROUP BY championTokenId, championName
+  ORDER BY totalKills DESC 
+  LIMIT 10
+`);
+for (const row of s1KillRows) {
+  console.log(`  ${row.championName} (#${row.championTokenId}): ${row.totalKills} kills in ${row.totalMatches} matches (avg ${row.avgKills})`);
+}
 
 await conn.end();
