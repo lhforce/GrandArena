@@ -316,13 +316,12 @@ export function scoreChampion(
   // ─── Trait Schemes ───────────────────────────────────────────────
   // Trait schemes give +25 per qualifying MOKI per match, applied at the LINEUP level.
   // The actual trait bonus is calculated in the co-optimization loop (lineup-level).
-  // Here we just need to:
-  //   - Qualifying MOKIs: return base performance (they'll get the team bonus at lineup level)
-  //   - Non-qualifying MOKIs: heavily penalize so they're only picked if no qualifiers exist
+  // HARD EXCLUSION: Non-qualifying MOKIs return -Infinity so they are NEVER picked.
+  // A Golden Shower lineup must only contain Gold Fur champions, etc.
   if (cat === "trait") {
     if (!qualifies) {
-      // Non-qualifying MOKIs lose the team trait bonus AND dilute the lineup
-      return Math.round(baseScore * 0.3);
+      // HARD EXCLUSION — non-qualifying MOKIs must never appear in trait scheme lineups
+      return -Infinity;
     }
     // Qualifying MOKIs: base performance only — trait bonus added at lineup level
     return Math.round(baseScore);
@@ -333,8 +332,9 @@ export function scoreChampion(
   // The scheme changes WHAT actions matter, so we re-weight the stats.
 
   // Non-qualifying MOKIs for trait-filtered performance schemes (rare but possible)
+  // HARD EXCLUSION for any scheme with hasTraitFilter
   if (!qualifies) {
-    return Math.round(baseScore * 0.3);
+    return -Infinity;
   }
 
   let schemeScore = 0;
@@ -427,7 +427,14 @@ function buildOneOfEachLineup(
     Legendary: [],
   };
 
-  for (const c of available) {
+  // Pre-filter: for trait schemes with hasTraitFilter, only allow qualifying champions
+  let pool = available;
+  if (scheme && scheme.hasTraitFilter && scheme.qualifyingChampionIds.length > 0) {
+    pool = available.filter((c) =>
+      scheme.qualifyingChampionIds.includes(c.championTokenId ?? "")
+    );
+  }
+  for (const c of pool) {
     if (usedTokenIds.has(c.tokenId)) continue;
     const r = c.rarity === "Common" ? "Basic" : c.rarity;
     if (byRarity[r]) byRarity[r].push(c);
@@ -476,9 +483,16 @@ function buildStandardLineup(
   scheme: SchemeCardData | null,
   usedTokenIds: Set<string>
 ): LineupSlot[] | null {
-  const candidates = available
-    .filter((c) => !usedTokenIds.has(c.tokenId))
+  // Pre-filter: for trait schemes with hasTraitFilter, only allow qualifying champions
+  let pool = available.filter((c) => !usedTokenIds.has(c.tokenId));
+  if (scheme && scheme.hasTraitFilter && scheme.qualifyingChampionIds.length > 0) {
+    pool = pool.filter((c) =>
+      scheme.qualifyingChampionIds.includes(c.championTokenId ?? "")
+    );
+  }
+  const candidates = pool
     .map((c) => ({ champion: c, score: scoreChampion(c, scheme) }))
+    .filter((c) => c.score > -Infinity) // Safety: exclude any -Infinity scores
     .sort((a, b) => b.score - a.score);
 
   // Greedy pick: take top-scored cards but enforce champion name uniqueness

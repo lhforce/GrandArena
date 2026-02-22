@@ -1,0 +1,17 @@
+{
+  "query": "\nSELECT \n  COUNT(*) as total_entries,\n  SUM(CASE WHEN aiProcessedAt IS NOT NULL THEN 1 ELSE 0 END) as identified,\n  SUM(CASE WHEN aiProcessedAt IS NULL THEN 1 ELSE 0 END) as unidentified,\n  MAX(aiProcessedAt) as last_identified_at,\n  ROUND(SUM(CASE WHEN aiProcessedAt IS NOT NULL THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) as id_rate_pct\nFROM leaderboard_entries;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute \nSELECT \n  COUNT(*) as total_entries,\n  SUM(CASE WHEN aiProcessedAt IS NOT NULL THEN 1 ELSE 0 END) as identified,\n  SUM(CASE WHEN aiProcessedAt IS NULL THEN 1 ELSE 0 END) as unidentified,\n  MAX(aiProcessedAt) as last_identified_at,\n  ROUND(SUM(CASE WHEN aiProcessedAt IS NOT NULL THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) as id_rate_pct\nFROM leaderboard_entries;\n",
+  "rows": [
+    {
+      "total_entries": "8037",
+      "identified": "18",
+      "unidentified": "8019",
+      "last_identified_at": "2026-02-21 14:29:22",
+      "id_rate_pct": "0.2"
+    }
+  ],
+  "messages": [],
+  "stdout": "total_entries\tidentified\tunidentified\tlast_identified_at\tid_rate_pct\n8037\t18\t8019\t2026-02-21 14:29:22\t0.2\n",
+  "stderr": "",
+  "execution_time_ms": 69
+}

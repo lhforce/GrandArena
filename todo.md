@@ -314,3 +314,7 @@
 - [x] Owned cards are only relevant for card lockup tracking (already-entered contests)
 - [x] Update lineupRouter to pass all champions from game-data.json as the candidate pool
 - [x] Keep owned card lockup logic intact (cards in active contests can't be reused)
+
+## Bug Fixes Round 13
+- [x] Fix lineup builder: Hard exclude non-qualifying champions from trait scheme lineups (Golden Shower must only contain Gold Fur MOKIs)
+- [x] Restore missing pages: Opponent Crusher, Meta Report, Champion Deep Dive, Legendary Advisor — sidebar nav + routes + working backend procedures

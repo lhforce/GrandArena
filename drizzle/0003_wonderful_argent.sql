@@ -1,0 +1,1 @@
+ALTER TABLE `match_player_stats` ADD `score` decimal(10,2) DEFAULT '0';

@@ -278,6 +278,7 @@ export const matchPlayerStats = mysqlTable("match_player_stats", {
   wartDistance: decimal("wartDistance", { precision: 10, scale: 2 }).default("0"),
   isWinner: boolean("isWinner").default(false),
   matchDate: varchar("matchDate", { length: 16 }),
+  score: decimal("score", { precision: 10, scale: 2 }).default("0"), // Official formula: kills*80 + balls*50 + wart*0.5625 + win*300
 }, (table) => [
   index("idx_mps_match").on(table.matchId),
   index("idx_mps_champion").on(table.championTokenId),

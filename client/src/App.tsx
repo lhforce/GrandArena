@@ -13,6 +13,10 @@ import MyCards from "@/pages/MyCards";
 import ChampionStats from "@/pages/ChampionStats";
 import TelegramAlerts from "@/pages/TelegramAlerts";
 import Settings from "@/pages/Settings";
+import OpponentCrusher from "@/pages/OpponentCrusher";
+import MetaReport from "@/pages/MetaReport";
+import ChampionDeepDive from "@/pages/ChampionDeepDive";
+import LegendaryAdvisor from "@/pages/LegendaryAdvisor";
 import MatchupIntel from "@/pages/MatchupIntel";
 import SwapAdvisor from "@/pages/SwapAdvisor";
 
@@ -26,6 +30,10 @@ function Router() {
         <Route path="/lineup-builder" component={LineupBuilder} />
         <Route path="/my-cards" component={MyCards} />
         <Route path="/champion-stats" component={ChampionStats} />
+        <Route path="/opponent-crusher" component={OpponentCrusher} />
+        <Route path="/meta-report" component={MetaReport} />
+        <Route path="/champion-deep-dive" component={ChampionDeepDive} />
+        <Route path="/legendary-advisor" component={LegendaryAdvisor} />
         <Route path="/telegram-alerts" component={TelegramAlerts} />
         <Route path="/matchup-intel" component={MatchupIntel} />
         <Route path="/swap-advisor" component={SwapAdvisor} />

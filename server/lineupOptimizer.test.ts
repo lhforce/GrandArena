@@ -128,18 +128,17 @@ describe("scoreChampion", () => {
     const withoutScheme = scoreChampion(champ, null);
     // Qualifying MOKIs get their full base score (no per-MOKI bonus).
     // The trait bonus is applied at the lineup level in the co-optimization loop.
-    // Non-qualifying MOKIs get penalized (30% of base), so qualifying > non-qualifying.
+    // Qualifying MOKIs get their full base score.
+    // Non-qualifying MOKIs now get -Infinity (hard exclusion), so qualifying is always better.
     expect(withScheme).toBeGreaterThanOrEqual(withoutScheme);
   });
 
-  it("penalizes non-qualifying champions under trait schemes", () => {
+  it("hard-excludes non-qualifying champions under trait schemes", () => {
     const champ = makeChampion("RainbowMoki", "Basic", "7");
     const scheme = makeScheme("Shadow", "trait", true, ["ct-999"]); // Different ID
     const withScheme = scoreChampion(champ, scheme);
-    const withoutScheme = scoreChampion(champ, null);
-    // Non-qualifying MOKIs get only tiebreaker score under trait schemes,
-    // which should be less than the full balanced score (no scheme)
-    expect(withScheme).toBeLessThan(withoutScheme);
+    // HARD EXCLUSION: non-qualifying MOKIs return -Infinity
+    expect(withScheme).toBe(-Infinity);
   });
 });
 
@@ -1056,13 +1055,12 @@ describe("Trait scheme co-optimization", () => {
     expect(traitScore).toBe(baseScore);
   });
 
-  it("non-qualifying MOKIs get heavily penalized under trait scheme", () => {
-    const baseScore = scoreChampion(nonShadowStar, null);
+  it("non-qualifying MOKIs are hard-excluded from trait scheme lineups", () => {
     const traitScore = scoreChampion(nonShadowStar, traitScheme);
 
-    // Non-qualifying gets 30% of base score
-    expect(traitScore).toBe(Math.round(baseScore * 0.3));
-    expect(traitScore).toBeLessThan(baseScore);
+    // HARD EXCLUSION: non-qualifying MOKIs return -Infinity so they are NEVER picked.
+    // A Golden Shower lineup must only contain Gold Fur champions, etc.
+    expect(traitScore).toBe(-Infinity);
   });
 
   it("categorizeScheme returns 'trait' when hasTraitFilter is true", () => {
