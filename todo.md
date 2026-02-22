@@ -278,3 +278,6 @@
 ## Bug Fixes Round 11
 - [x] Fix duplicate AI identification jobs running concurrently — stale DB records from server restart; added startup cleanup in cardIdentifier.ts + _core/index.ts
 - [x] Validate Cage Match optimizer picks against GATracker top killers — confirmed our data matches; new optimizer should pick Mokington/Dheu/Mokuna/Low Tier Phenom for Epic Cage Match
+
+## Bug Fixes Round 12
+- [x] Fix optimizer still picking MahoShojo/Peeltergeist for Cage Match — root cause: empirical blending inflated stats (MahoShojo kills 0→4.33), fixed by making match history (50+ matches) the primary data source with 80-95% weight, bypassing corrupted empirical estimates

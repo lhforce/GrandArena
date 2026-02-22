@@ -225,8 +225,9 @@ export const lineupRouter = router({
 
         const blended = blendStats(modelStats, empirical, cardRarity);
 
-        // Layer 3: Blend in match history data (real match performance from GATracker)
-        // Match history is the most reliable source — actual kills/balls/wart from real games
+        // Layer 3: Match history data (real match performance from GATracker)
+        // Match history is the MOST RELIABLE source — actual kills/balls/wart from real games.
+        // When we have enough match history, it should DOMINATE over model/empirical estimates.
         const matchData = matchPerformanceData.get(row.championTokenId);
         let finalStats = {
           avgKills: blended.avgKills,
@@ -237,16 +238,28 @@ export const lineupRouter = router({
         let matchHistoryMatches = 0;
 
         if (matchData && matchData.totalMatches >= 10) {
-          // Match history confidence: scales from 0 at 10 matches to 0.6 at 100+ matches
-          const matchConfidence = Math.min(0.6, (matchData.totalMatches - 10) / 150);
           matchHistoryMatches = matchData.totalMatches;
 
-          finalStats = {
-            avgKills: Math.round((finalStats.avgKills * (1 - matchConfidence) + matchData.avgKills * matchConfidence) * 100) / 100,
-            avgBalls: Math.round((finalStats.avgBalls * (1 - matchConfidence) + matchData.avgBalls * matchConfidence) * 100) / 100,
-            avgWartDistance: Math.round((finalStats.avgWartDistance * (1 - matchConfidence) + matchData.avgWartDistance * matchConfidence) * 100) / 100,
-            winRate: Math.round((finalStats.winRate * (1 - matchConfidence) + matchData.winRate * matchConfidence) * 1000) / 1000,
-          };
+          if (matchData.totalMatches >= 50) {
+            // 50+ matches: match history is highly reliable, use it as primary source
+            // Only blend in a small amount of model data for smoothing
+            const matchWeight = Math.min(0.95, 0.8 + (matchData.totalMatches - 50) / 500);
+            finalStats = {
+              avgKills: Math.round((modelStats.avgKills * (1 - matchWeight) + matchData.avgKills * matchWeight) * 100) / 100,
+              avgBalls: Math.round((modelStats.avgBalls * (1 - matchWeight) + matchData.avgBalls * matchWeight) * 100) / 100,
+              avgWartDistance: Math.round((modelStats.avgWartDistance * (1 - matchWeight) + matchData.avgWartDistance * matchWeight) * 100) / 100,
+              winRate: Math.round((modelStats.winRate * (1 - matchWeight) + matchData.winRate * matchWeight) * 1000) / 1000,
+            };
+          } else {
+            // 10-49 matches: blend match history with model (skip empirical to avoid corruption)
+            const matchWeight = Math.min(0.7, (matchData.totalMatches - 10) / 60);
+            finalStats = {
+              avgKills: Math.round((modelStats.avgKills * (1 - matchWeight) + matchData.avgKills * matchWeight) * 100) / 100,
+              avgBalls: Math.round((modelStats.avgBalls * (1 - matchWeight) + matchData.avgBalls * matchWeight) * 100) / 100,
+              avgWartDistance: Math.round((modelStats.avgWartDistance * (1 - matchWeight) + matchData.avgWartDistance * matchWeight) * 100) / 100,
+              winRate: Math.round((modelStats.winRate * (1 - matchWeight) + matchData.winRate * matchWeight) * 1000) / 1000,
+            };
+          }
         }
 
         performanceStats.set(row.championTokenId, finalStats);
