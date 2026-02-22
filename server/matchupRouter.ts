@@ -197,8 +197,12 @@ export const matchupRouter = router({
   analyzeSwaps: publicProcedure
     .input(
       z.object({
-        yourChampionIds: z.array(z.number()).length(4),
-        opponentChampionIds: z.array(z.number()).length(4),
+        slots: z.array(
+          z.object({
+            championTokenId: z.number(),
+            opponents: z.array(z.number()).min(1).max(10),
+          })
+        ).min(1).max(4),
         benchChampionIds: z.array(z.number()).optional(),
       })
     )
@@ -206,14 +210,14 @@ export const matchupRouter = router({
       const gameData = await loadGameDataLookup();
 
       // If no bench provided and user is logged in, get their full inventory
+      const yourIds = input.slots.map((s) => s.championTokenId);
       let benchIds = input.benchChampionIds ?? [];
       if (benchIds.length === 0 && ctx.user) {
-        benchIds = await getUserBenchChampions(ctx.user.id, input.yourChampionIds);
+        benchIds = await getUserBenchChampions(ctx.user.id, yourIds);
       }
 
       const result = await analyzeMatchupsAndRecommendSwaps(
-        input.yourChampionIds,
-        input.opponentChampionIds,
+        input.slots,
         benchIds,
         gameData
       );
@@ -416,7 +420,12 @@ export const matchupRouter = router({
     .input(
       z.object({
         lineupId: z.number(),
-        opponentChampionIds: z.array(z.number()).length(4),
+        // 4 slots, each with up to 5 opponent championTokenIds
+        opponentSlots: z.array(
+          z.object({
+            opponents: z.array(z.number()).min(1).max(10),
+          })
+        ).min(1).max(4),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -466,7 +475,6 @@ export const matchupRouter = router({
         if (champId && !isNaN(champId)) {
           yourChampionIds.push(champId);
         } else {
-          // Fallback: check if the nftId itself is a championTokenId
           const asNum = Number(nftId);
           if (!isNaN(asNum) && gameData.has(asNum)) {
             yourChampionIds.push(asNum);
@@ -481,12 +489,17 @@ export const matchupRouter = router({
         );
       }
 
+      // Build slots with opponents
+      const slots = yourChampionIds.map((champId, idx) => ({
+        championTokenId: champId,
+        opponents: input.opponentSlots[idx]?.opponents ?? [],
+      }));
+
       // Get user's full bench (all owned MOKIs minus the ones in this lineup)
       const benchIds = await getUserBenchChampions(ctx.user.id, yourChampionIds);
 
       const result = await analyzeMatchupsAndRecommendSwaps(
-        yourChampionIds,
-        input.opponentChampionIds,
+        slots,
         benchIds,
         gameData
       );

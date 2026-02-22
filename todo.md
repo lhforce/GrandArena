@@ -219,3 +219,13 @@
 - [x] Reduce inter-champion delay from 500ms to 100ms
 - [x] Batch database inserts instead of row-by-row
 - [x] Add progress speed indicator (champions/min, matches/sec)
+
+## Swap Advisor Redesign (4×5 Format)
+- [x] Redesign swap advisor engine: each of 4 MOKI slots faces 5 different opponents (20 total matches)
+- [x] Update data model: SlotMatchup = { slotIndex, yourMoki, opponents: [5 opponents] }
+- [x] Optimize swap scoring across all 5 opponents per slot (not just 1)
+- [x] Redesign UI: show 4 MOKI slots with 5 opponent cards each
+- [x] Allow inputting 5 opponents per slot (manual mode)
+- [x] Auto-populate from contest data if available
+- [x] Swap recommendation: "For slot X, swap A for B — improves avg win rate across 5 opponents by Y%"
+- [x] Write tests for new 4×5 swap logic

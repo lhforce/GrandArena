@@ -6,8 +6,8 @@
  * Each champion has ~900 matches, 100 per page.
  * 179 champions × ~10 pages = ~1,790 API calls for full scrape.
  *
- * OPTIMIZED: Parallel champion fetching (5 concurrent) + batch DB inserts
- * + reduced delays → ~5-8 min instead of ~40 min.
+ * OPTIMIZED v2: 10 concurrent champions + no redundant API calls
+ * + batch DB inserts + reduced delays → ~3-4 min total.
  */
 
 import { eq, sql } from "drizzle-orm";
@@ -20,10 +20,10 @@ import {
 
 const GATRACKER_BASE = "https://botto-n8n-botto.eelnl8.easypanel.host/webhook";
 const MATCHES_PER_PAGE = 100;
-const REQUEST_DELAY_MS = 200; // Reduced from 800ms — still polite at ~5 req/sec
-const INTER_CHAMPION_DELAY_MS = 100; // Reduced from 500ms
-const PARALLEL_CHAMPIONS = 5; // Scrape 5 champions concurrently
-const DB_BATCH_SIZE = 50; // Batch insert size
+const REQUEST_DELAY_MS = 150; // 150ms between pages (~7 req/sec per champion)
+const INTER_BATCH_DELAY_MS = 50; // 50ms between batches
+const PARALLEL_CHAMPIONS = 10; // 10 champions concurrently
+const DB_BATCH_SIZE = 100; // Larger batch inserts
 
 // Standard headers required by the GATracker API
 const GATRACKER_HEADERS = {
@@ -104,7 +104,7 @@ export interface ScrapeProgress {
   isRunning: boolean;
   startedAt: string | null;
   estimatedTimeRemaining: string | null;
-  speed: string | null; // e.g. "12.5 champs/min"
+  speed: string | null;
 }
 
 // ─── In-memory scrape state ────────────────────────────────────────
@@ -242,7 +242,7 @@ async function storeMatchDataBatch(
       await db
         .insert(matchHistory)
         .values(batch)
-        .onDuplicateKeyUpdate({ set: { matchId: sql`match_id` } }); // no-op on duplicate
+        .onDuplicateKeyUpdate({ set: { matchId: sql`match_id` } });
       matchesInserted += batch.length;
     } catch (err: any) {
       // Fall back to individual inserts on batch failure
@@ -271,7 +271,7 @@ async function storeMatchDataBatch(
         .values(batch)
         .onDuplicateKeyUpdate({
           set: { matchId: sql`match_id`, championTokenId: sql`champion_token_id` },
-        }); // no-op on duplicate
+        });
       statsInserted += batch.length;
     } catch (err: any) {
       // Fall back to individual inserts on batch failure
@@ -300,6 +300,7 @@ async function storeMatchDataBatch(
 
 /**
  * Scrape match history for a single champion (all pages).
+ * FIX v2: No redundant API calls — captures newestMatchId from page 1 inline.
  */
 async function scrapeChampionMatches(
   championTokenId: number,
@@ -317,6 +318,7 @@ async function scrapeChampionMatches(
   let totalAvailable = 0;
   let page = 1;
   let totalPages = 1;
+  let newestMatchId: string | null = null;
 
   // Update progress to in_progress
   await db
@@ -339,7 +341,7 @@ async function scrapeChampionMatches(
     const response = await fetchMokiMatches(championTokenId, page);
     if (!response) {
       // Retry once after a longer delay
-      await sleep(2000);
+      await sleep(1500);
       const retry = await fetchMokiMatches(championTokenId, page);
       if (!retry) {
         console.error(
@@ -349,28 +351,30 @@ async function scrapeChampionMatches(
       }
       totalPages = retry.pagination.pages;
       totalAvailable = retry.pagination.total;
-      const { matchesInserted, statsInserted } = await storeMatchDataBatch(
-        retry.data
-      );
+
+      // Capture newestMatchId from page 1 (no extra API call!)
+      if (page === 1 && retry.data.length > 0) {
+        newestMatchId = retry.data[0].matchId;
+      }
+
+      const { matchesInserted, statsInserted } = await storeMatchDataBatch(retry.data);
       totalMatchesStored += matchesInserted;
       totalStatsStored += statsInserted;
     } else {
       totalPages = response.pagination.pages;
       totalAvailable = response.pagination.total;
-      const { matchesInserted, statsInserted } = await storeMatchDataBatch(
-        response.data
-      );
+
+      // Capture newestMatchId from page 1 (no extra API call!)
+      if (page === 1 && response.data.length > 0) {
+        newestMatchId = response.data[0].matchId;
+      }
+
+      const { matchesInserted, statsInserted } = await storeMatchDataBatch(response.data);
       totalMatchesStored += matchesInserted;
       totalStatsStored += statsInserted;
     }
 
-    // Track newest matchId from page 1 for incremental scraping
-    if (page === 1) {
-      const resp = await fetchMokiMatches(championTokenId, 1);
-      // Already fetched above, just update newestMatchId from the response
-    }
-
-    // Update progress
+    // Update progress every page
     await db
       .update(matchScrapeProgress)
       .set({
@@ -384,25 +388,14 @@ async function scrapeChampionMatches(
 
     page++;
 
-    // Rate limiting between pages (reduced from 800ms)
+    // Rate limiting between pages
     if (page <= totalPages) {
       await sleep(REQUEST_DELAY_MS);
     }
   }
 
-  // Mark as completed and store the newest matchId for incremental scraping
+  // Mark as completed — newestMatchId already captured from page 1 above
   const finalStatus = scrapeAborted ? "pending" : "completed";
-
-  // Get the newest matchId from the first page
-  let newestMatchId: string | null = null;
-  try {
-    const firstPage = await fetchMokiMatches(championTokenId, 1);
-    if (firstPage?.data?.[0]) {
-      newestMatchId = firstPage.data[0].matchId;
-    }
-  } catch {
-    // ignore — not critical
-  }
 
   await db
     .update(matchScrapeProgress)
@@ -411,6 +404,7 @@ async function scrapeChampionMatches(
       matchesScraped: totalMatchesStored,
       lastScrapedAt: new Date(),
       newestMatchId,
+      lastIncrementalAt: new Date(),
     })
     .where(eq(matchScrapeProgress.championTokenId, championTokenId));
 
@@ -448,7 +442,7 @@ async function fetchChampionList(): Promise<
 
     return entries.map((e: any) => ({
       championTokenId: Number(e.champion_id),
-      name: `Champion #${e.champion_id}`,
+      name: e.name || `Champion #${e.champion_id}`,
     }));
   } catch (err) {
     console.error("[MatchScraper] Failed to fetch champion list:", err);
@@ -482,7 +476,7 @@ async function scrapeChampionBatch(
 
     championsCompletedSoFar++;
     console.log(
-      `[MatchScraper] ${champ.name}: ${result.matchesStored} matches, ${result.statsStored} stats ` +
+      `[MatchScraper] ${champ.name}: ${result.matchesStored} matches ` +
         `(${championsCompletedSoFar}/${totalChampions})`
     );
   });
@@ -491,9 +485,24 @@ async function scrapeChampionBatch(
 }
 
 /**
+ * Reset stuck in-progress champions back to pending so they can be re-scraped.
+ */
+async function resetStuckChampions(): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+
+  const result = await db
+    .update(matchScrapeProgress)
+    .set({ status: "pending", pagesScraped: 0 })
+    .where(eq(matchScrapeProgress.status, "in_progress"));
+
+  return (result as any)?.[0]?.affectedRows ?? 0;
+}
+
+/**
  * Run the full match history scrape for all champions.
- * OPTIMIZED: Processes champions in parallel batches of 5.
- * Estimated time: ~5-8 minutes (down from ~40 minutes).
+ * OPTIMIZED v2: 10 concurrent + no redundant API calls + batch inserts.
+ * Estimated time: ~3-4 minutes.
  */
 export async function runFullMatchScrape(): Promise<void> {
   if (scrapeRunning) {
@@ -513,11 +522,22 @@ export async function runFullMatchScrape(): Promise<void> {
       return;
     }
 
+    // Reset any stuck in-progress champions first
+    const resetCount = await resetStuckChampions();
+    if (resetCount > 0) {
+      console.log(`[MatchScraper] Reset ${resetCount} stuck in-progress champions`);
+    }
+
     // Get champion list from leaderboard
     const champions = await fetchChampionList();
     console.log(
       `[MatchScraper] Starting PARALLEL scrape for ${champions.length} champions (${PARALLEL_CHAMPIONS} concurrent)`
     );
+
+    if (champions.length === 0) {
+      console.error("[MatchScraper] No champions found from leaderboard API");
+      return;
+    }
 
     // Check which champions already have completed scrapes
     const existingProgress = await db.select().from(matchScrapeProgress);
@@ -529,20 +549,24 @@ export async function runFullMatchScrape(): Promise<void> {
 
     // Count already completed
     championsCompletedSoFar = completedSet.size;
+    const remaining = champions.filter((c) => !completedSet.has(c.championTokenId));
+    console.log(
+      `[MatchScraper] ${completedSet.size} already completed, ${remaining.length} remaining`
+    );
 
     // Process in parallel batches
-    for (let i = 0; i < champions.length; i += PARALLEL_CHAMPIONS) {
+    for (let i = 0; i < remaining.length; i += PARALLEL_CHAMPIONS) {
       if (scrapeAborted) {
         console.log("[MatchScraper] Scrape aborted by user");
         break;
       }
 
-      const batch = champions.slice(i, i + PARALLEL_CHAMPIONS);
+      const batch = remaining.slice(i, i + PARALLEL_CHAMPIONS);
       await scrapeChampionBatch(batch, completedSet, champions.length);
 
-      // Small delay between batches to avoid overwhelming the API
-      if (i + PARALLEL_CHAMPIONS < champions.length) {
-        await sleep(INTER_CHAMPION_DELAY_MS);
+      // Small delay between batches
+      if (i + PARALLEL_CHAMPIONS < remaining.length) {
+        await sleep(INTER_BATCH_DELAY_MS);
       }
     }
 
@@ -748,7 +772,7 @@ async function scrapeChampionIncremental(
 /**
  * Run incremental match scrape for all champions IN PARALLEL.
  * Only fetches new matches since the last scrape for each champion.
- * Processes 5 champions concurrently for speed.
+ * Processes 10 champions concurrently for speed.
  */
 export async function runIncrementalMatchScrape(): Promise<IncrementalResult> {
   if (incrementalRunning || scrapeRunning) {
@@ -835,7 +859,7 @@ export async function runIncrementalMatchScrape(): Promise<IncrementalResult> {
 
       // Small delay between batches
       if (i + PARALLEL_CHAMPIONS < completedChampions.length) {
-        await sleep(INTER_CHAMPION_DELAY_MS);
+        await sleep(INTER_BATCH_DELAY_MS);
       }
     }
 
@@ -893,7 +917,6 @@ export function getIncrementalStatus(): {
 
 function getNextCronRun(): string {
   if (!lastIncrementalRun) {
-    // If never run, next run is ~1 hour from server start
     return new Date(Date.now() + CRON_INTERVAL_MS).toISOString();
   }
   const nextRun = new Date(lastIncrementalRun.getTime() + CRON_INTERVAL_MS);

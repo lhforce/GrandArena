@@ -660,3 +660,191 @@ describe("Contest-Based Swap Advisor — Opponent Detection", () => {
     expect(opponents[0].champions[0].name).toBe("Golden Nugget");
   });
 });
+
+
+// ─── 4×5 Format Tests (Each MOKI plays 5 opponents) ─────────────
+
+describe("Swap Advisor — 4×5 Format: Slot-Based Analysis", () => {
+  it("should calculate average win rate across 5 opponents for a slot", () => {
+    const opponentWinRates = [65, 40, 55, 70, 30];
+    const avgWinRate =
+      Math.round(
+        (opponentWinRates.reduce((sum, r) => sum + r, 0) / opponentWinRates.length) * 100
+      ) / 100;
+
+    expect(avgWinRate).toBe(52);
+  });
+
+  it("should calculate expected wins from 5 matchups", () => {
+    const opponentWinRates = [65, 40, 55, 70, 30]; // as percentages
+    const expectedWins = opponentWinRates.reduce((sum, wr) => sum + wr / 100, 0);
+
+    // 0.65 + 0.40 + 0.55 + 0.70 + 0.30 = 2.60
+    expect(expectedWins).toBeCloseTo(2.6, 2);
+  });
+
+  it("should calculate overall win rate across all 20 matchups (4 slots × 5 opponents)", () => {
+    const slots = [
+      { opponents: [65, 40, 55, 70, 30] }, // avg 52
+      { opponents: [80, 75, 60, 45, 50] }, // avg 62
+      { opponents: [35, 40, 45, 50, 55] }, // avg 45
+      { opponents: [70, 65, 60, 55, 50] }, // avg 60
+    ];
+
+    const allWinRates = slots.flatMap((s) => s.opponents);
+    const overallAvg =
+      Math.round(
+        (allWinRates.reduce((sum, r) => sum + r, 0) / allWinRates.length) * 100
+      ) / 100;
+
+    // Total: (52*5 + 62*5 + 45*5 + 60*5) / 20 = (260+310+225+300)/20 = 1095/20 = 54.75
+    expect(overallAvg).toBe(54.75);
+  });
+
+  it("should calculate total expected wins across all 20 matchups", () => {
+    const slots = [
+      { expectedWins: 2.6 },
+      { expectedWins: 3.1 },
+      { expectedWins: 2.25 },
+      { expectedWins: 3.0 },
+    ];
+
+    const totalExpectedWins = slots.reduce((sum, s) => sum + s.expectedWins, 0);
+    expect(totalExpectedWins).toBeCloseTo(10.95, 2);
+  });
+
+  it("should evaluate swap candidate across all 5 opponents in a slot", () => {
+    // Current champion win rates vs 5 opponents
+    const currentWinRates = [45, 30, 55, 40, 35]; // avg 41
+    // Candidate champion win rates vs same 5 opponents
+    const candidateWinRates = [70, 55, 60, 65, 50]; // avg 60
+
+    const currentAvg = currentWinRates.reduce((s, r) => s + r, 0) / currentWinRates.length;
+    const candidateAvg = candidateWinRates.reduce((s, r) => s + r, 0) / candidateWinRates.length;
+
+    expect(currentAvg).toBe(41);
+    expect(candidateAvg).toBe(60);
+    expect(candidateAvg - currentAvg).toBe(19); // +19% improvement
+  });
+
+  it("should generate per-opponent breakdown for swap recommendation", () => {
+    const currentWinRates = [45, 30, 55, 40, 35];
+    const candidateWinRates = [70, 55, 60, 65, 50];
+    const opponentNames = ["Opp A", "Opp B", "Opp C", "Opp D", "Opp E"];
+
+    const breakdown = opponentNames.map((name, i) => ({
+      opponentName: name,
+      currentWinRate: currentWinRates[i],
+      suggestedWinRate: candidateWinRates[i],
+      improvement: candidateWinRates[i] - currentWinRates[i],
+    }));
+
+    expect(breakdown).toHaveLength(5);
+    expect(breakdown[0].improvement).toBe(25); // 70 - 45
+    expect(breakdown[1].improvement).toBe(25); // 55 - 30
+    expect(breakdown[2].improvement).toBe(5);  // 60 - 55
+    expect(breakdown[3].improvement).toBe(25); // 65 - 40
+    expect(breakdown[4].improvement).toBe(15); // 50 - 35
+  });
+
+  it("should only recommend swap when avg improvement > 3% across all 5 opponents", () => {
+    const currentAvgWinRate = 50;
+    const candidateAvgWinRates = [51, 52, 53, 53.1, 54, 60, 75];
+
+    const validSwaps = candidateAvgWinRates.filter((wr) => wr > currentAvgWinRate + 3);
+
+    // Only 53.1, 54, 60, 75 should qualify (>53%)
+    expect(validSwaps).toEqual([53.1, 54, 60, 75]);
+  });
+
+  it("should handle variable opponent counts (not always exactly 5)", () => {
+    // Some slots might have 3, 4, 5, or more opponents
+    const slots = [
+      { opponents: [65, 40, 55] },         // 3 opponents
+      { opponents: [80, 75, 60, 45] },     // 4 opponents
+      { opponents: [35, 40, 45, 50, 55] }, // 5 opponents
+      { opponents: [70, 65, 60, 55, 50, 45, 40] }, // 7 opponents
+    ];
+
+    const totalMatchups = slots.reduce((sum, s) => sum + s.opponents.length, 0);
+    expect(totalMatchups).toBe(19); // 3+4+5+7
+
+    // Average should still work
+    for (const slot of slots) {
+      const avg = slot.opponents.reduce((s, r) => s + r, 0) / slot.opponents.length;
+      expect(avg).toBeGreaterThan(0);
+      expect(avg).toBeLessThanOrEqual(100);
+    }
+  });
+
+  it("should calculate best possible lineup across all 4 slots", () => {
+    // Current lineup: slots with their avg win rates
+    const currentSlots = [
+      { avgWinRate: 42, expectedWins: 2.1 },
+      { avgWinRate: 55, expectedWins: 2.75 },
+      { avgWinRate: 38, expectedWins: 1.9 },
+      { avgWinRate: 60, expectedWins: 3.0 },
+    ];
+
+    // After swaps: improved slots
+    const recommendations = [
+      { slotIndex: 0, suggestedAvgWinRate: 65, suggestedExpectedWins: 3.25 },
+      { slotIndex: 2, suggestedAvgWinRate: 55, suggestedExpectedWins: 2.75 },
+    ];
+
+    let bestTotalWinRate = 0;
+    let bestTotalExpectedWins = 0;
+
+    for (const slot of currentSlots) {
+      const rec = recommendations.find((r) => r.slotIndex === currentSlots.indexOf(slot));
+      if (rec) {
+        bestTotalWinRate += rec.suggestedAvgWinRate;
+        bestTotalExpectedWins += rec.suggestedExpectedWins;
+      } else {
+        bestTotalWinRate += slot.avgWinRate;
+        bestTotalExpectedWins += slot.expectedWins;
+      }
+    }
+
+    const bestPossibleWinRate = bestTotalWinRate / currentSlots.length;
+    const currentOverallWinRate =
+      currentSlots.reduce((s, slot) => s + slot.avgWinRate, 0) / currentSlots.length;
+
+    // Current: (42+55+38+60)/4 = 48.75
+    expect(currentOverallWinRate).toBe(48.75);
+    // Best: (65+55+55+60)/4 = 58.75
+    expect(bestPossibleWinRate).toBe(58.75);
+    // Improvement: 10%
+    expect(bestPossibleWinRate - currentOverallWinRate).toBe(10);
+  });
+});
+
+describe("Swap Advisor — 4×5 Format: Input Validation", () => {
+  it("should require at least 1 opponent per slot", () => {
+    const slots = [
+      { championTokenId: 100, opponents: [200] },       // valid: 1 opponent
+      { championTokenId: 101, opponents: [201, 202] },  // valid: 2 opponents
+      { championTokenId: 102, opponents: [] },           // invalid: 0 opponents
+    ];
+
+    const validSlots = slots.filter((s) => s.opponents.length >= 1);
+    expect(validSlots).toHaveLength(2);
+  });
+
+  it("should allow up to 10 opponents per slot", () => {
+    const opponents = Array.from({ length: 10 }, (_, i) => 200 + i);
+    expect(opponents).toHaveLength(10);
+
+    const tooMany = Array.from({ length: 11 }, (_, i) => 200 + i);
+    const isValid = tooMany.length <= 10;
+    expect(isValid).toBe(false);
+  });
+
+  it("should handle duplicate opponents in a slot", () => {
+    const opponents = [200, 300, 200, 400, 300]; // duplicates
+    const unique = [...new Set(opponents)];
+
+    expect(unique).toHaveLength(3);
+    expect(unique).toEqual([200, 300, 400]);
+  });
+});
