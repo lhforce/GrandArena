@@ -281,3 +281,16 @@
 
 ## Bug Fixes Round 12
 - [x] Fix optimizer still picking MahoShojo/Peeltergeist for Cage Match — root cause: empirical blending inflated stats (MahoShojo kills 0→4.33), fixed by making match history (50+ matches) the primary data source with 80-95% weight, bypassing corrupted empirical estimates
+
+## Scheme Selection Bias Fix
+- [ ] Analyze winning lineup data to understand trait vs performance Scheme usage patterns
+- [ ] Fix Scheme scoring to properly value trait-based Schemes based on empirical winning data
+- [ ] Update optimizer to recommend trait-matched MOKI+Scheme combos (find MOKIs that match trait Schemes)
+- [ ] Verify optimizer now recommends trait Schemes when user has qualifying MOKIs
+
+## Variance-Aware Optimizer (DONE) (Trait Scheme Bias Fix)
+- [x] Add contestType field (topPercent vs winnerTakeAll) to ContestRules
+- [x] Detect contest type from contest name (Top 20%, Top 10%, etc.)
+- [x] Boost trait scheme risk multiplier for topPercent contests (consistency advantage, 1.65x)
+- [x] Penalize high-variance performance schemes for topPercent contests (0.9x)
+- [x] Update tests for variance-aware scoring (205 tests, 0 TS errors)

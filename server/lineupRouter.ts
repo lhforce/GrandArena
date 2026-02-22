@@ -125,26 +125,40 @@ export const lineupRouter = router({
       }
 
       // Build scheme lookup by name (case-insensitive)
-      const schemeLookup = new Map<string, { description: string }>();
+      // Include hasTraitFilter and qualifyingChampions from game data
+      const schemeLookup = new Map<string, {
+        description: string;
+        hasTraitFilter: boolean;
+        qualifyingChampionIds: string[];
+      }>();
       for (const gs of gameDataSchemes) {
+        const hasFilter = !!(gs as any).hasTraitFilter;
+        const qualChamps = ((gs as any).qualifyingChampions ?? []) as Array<{ championTokenId?: string }>;
+        const qualIds = qualChamps
+          .map((q) => q.championTokenId)
+          .filter((id): id is string => !!id);
         schemeLookup.set(gs.name.toLowerCase(), {
           description: gs.description ?? gs.effect ?? "",
+          hasTraitFilter: hasFilter,
+          qualifyingChampionIds: qualIds,
         });
       }
 
-      // Load scheme data with risk classification
+      // Load scheme data with risk classification and trait info
       const { classifySchemeRisk, categorizeScheme: catScheme } = await import("./lineupOptimizer");
       const schemeCards: SchemeCardData[] = available.schemes.map((s) => {
         const sName = s.name ?? "Unknown Scheme";
         const lookup = schemeLookup.get(sName.toLowerCase());
         const desc = lookup?.description ?? "";
+        const hasTraitFilter = lookup?.hasTraitFilter ?? false;
+        const qualifyingChampionIds = lookup?.qualifyingChampionIds ?? [];
         return {
           tokenId: s.tokenId,
           name: sName,
           description: desc,
-          hasTraitFilter: false,
-          qualifyingChampionIds: [],
-          category: catScheme(desc),
+          hasTraitFilter,
+          qualifyingChampionIds,
+          category: catScheme(desc, hasTraitFilter),
           riskLevel: classifySchemeRisk(sName, desc),
           imageUrl: s.imageUrl ?? null,
         };
@@ -276,12 +290,22 @@ export const lineupRouter = router({
         };
       }
 
+      // Detect contest type from name for variance-aware scheme selection
+      // "Top X%" contests reward consistency (trait schemes preferred)
+      // "Winner" or "1st Place" contests reward ceiling (performance schemes preferred)
+      const contestNameLower = (contest.name ?? "").toLowerCase();
+      const contestType: import("./lineupOptimizer").ContestType =
+        /top\s*\d+\s*%/.test(contestNameLower) ? "topPercent" :
+        /winner|1st place|first place|highest score/.test(contestNameLower) ? "winnerTakeAll" :
+        "standard";
+
       const contestRules: ContestRules = {
         rarityRestriction: contest.rarityRestriction ?? "OPEN",
         isOneOfEach: contest.isOneOfEach ?? false,
         isStarCap: contest.isStarCap ?? false,
         maxEntriesPerUser: contest.maxEntriesPerUser ?? 1,
         format: contest.format,
+        contestType,
       };
 
       // Load empirical scheme performance data for risk override

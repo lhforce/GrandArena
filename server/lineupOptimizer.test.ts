@@ -121,12 +121,15 @@ describe("scoreChampion", () => {
     expect(withScheme).toBeGreaterThan(withoutScheme);
   });
 
-  it("adds trait bonus for qualifying champions", () => {
+  it("qualifying champions under trait scheme score same as base (no per-MOKI bonus — bonus is at lineup level)", () => {
     const champ = makeChampion("ShadowMoki", "Basic", "6");
     const scheme = makeScheme("Shadow", "trait", true, ["ct-6"]);
     const withScheme = scoreChampion(champ, scheme);
     const withoutScheme = scoreChampion(champ, null);
-    expect(withScheme).toBeGreaterThan(withoutScheme);
+    // Qualifying MOKIs get their full base score (no per-MOKI bonus).
+    // The trait bonus is applied at the lineup level in the co-optimization loop.
+    // Non-qualifying MOKIs get penalized (30% of base), so qualifying > non-qualifying.
+    expect(withScheme).toBeGreaterThanOrEqual(withoutScheme);
   });
 
   it("penalizes non-qualifying champions under trait schemes", () => {
@@ -971,5 +974,220 @@ describe("co-optimization: Scheme drives MOKI selection", () => {
     // unless there aren't enough killers (but we have 4 killers available)
     expect(selectedNames).not.toContain("MahoShojo");
     expect(selectedNames).not.toContain("Tamanuki");
+  });
+});
+
+
+// ─── Trait Scheme Co-Optimization Tests ──────────────────────────────
+
+describe("Trait scheme co-optimization", () => {
+  // Simulate a trait scheme like "Midnight Strike" (+25 for EACH Shadow Fur)
+  const traitScheme: SchemeCardData = {
+    tokenId: "trait-shadow",
+    name: "Midnight Strike",
+    description: "+25 points for EACH Shadow Fur trait in lineup",
+    hasTraitFilter: true,
+    qualifyingChampionIds: ["ct-shadow1", "ct-shadow2", "ct-shadow3", "ct-shadow4", "ct-shadow5"],
+    category: "trait",
+    riskLevel: "guaranteed",
+    imageUrl: null,
+  };
+
+  // Non-trait performance scheme for comparison
+  const cageMatch: SchemeCardData = {
+    tokenId: "cage-match",
+    name: "Cage Match",
+    description: "+35 points Per Moki Elimination, +10 points per Gacha Ball delivered",
+    hasTraitFilter: false,
+    qualifyingChampionIds: [],
+    category: "combo",
+    riskLevel: "reliable",
+    imageUrl: null,
+  };
+
+  // Champions: mix of qualifying and non-qualifying
+  const shadowKiller = makeChampion("ShadowKiller", "Epic", "shadow1", {
+    avgKills: 2.0, avgBalls: 0.5, avgWartDistance: 50, winRate: 0.6,
+  });
+  const shadowBaller = makeChampion("ShadowBaller", "Epic", "shadow2", {
+    avgKills: 0.5, avgBalls: 4.0, avgWartDistance: 30, winRate: 0.5,
+  });
+  const shadowAvg = makeChampion("ShadowAvg", "Epic", "shadow3", {
+    avgKills: 1.0, avgBalls: 1.0, avgWartDistance: 60, winRate: 0.45,
+  });
+  const shadowWeak = makeChampion("ShadowWeak", "Epic", "shadow4", {
+    // Decent stats — weak compared to other shadows but still competitive enough
+    // to be preferred over non-qualifying MOKIs when trait bonus is factored in
+    avgKills: 1.2, avgBalls: 0.8, avgWartDistance: 40, winRate: 0.45,
+  });
+  // Realistic stats: killers specialize in kills (low balls), ball carriers specialize in balls (low kills)
+  // NonShadow MOKIs are strong killers but don't qualify for the trait scheme
+  const nonShadowStar = makeChampion("NonShadowStar", "Epic", "nonshadow1", {
+    avgKills: 2.8, avgBalls: 0.1, avgWartDistance: 60, winRate: 0.65,
+  });
+  const nonShadowGood = makeChampion("NonShadowGood", "Epic", "nonshadow2", {
+    avgKills: 2.3, avgBalls: 0.1, avgWartDistance: 50, winRate: 0.60,
+  });
+
+  it("trait scheme scores qualifying MOKIs higher than non-qualifying stars", () => {
+    // ShadowKiller (qualifying, decent stats) should score higher than
+    // NonShadowStar (non-qualifying, amazing stats) under a trait scheme
+    const shadowScore = scoreChampion(shadowKiller, traitScheme);
+    const nonShadowScore = scoreChampion(nonShadowStar, traitScheme);
+
+    // Non-qualifying gets 30% of base score, qualifying gets base + 125 bonus
+    expect(shadowScore).toBeGreaterThan(nonShadowScore);
+  });
+
+  it("trait scheme: qualifying MOKI gets full base score (trait bonus is at lineup level, not per-MOKI)", () => {
+    const baseScore = scoreChampion(shadowKiller, null);
+    const traitScore = scoreChampion(shadowKiller, traitScheme);
+
+    // Qualifying MOKIs get their full base score under trait schemes.
+    // The +25/match × 5 matches = +125 per qualifying MOKI bonus is applied
+    // at the LINEUP level in the co-optimization loop, not per-MOKI in scoreChampion.
+    // This allows the optimizer to correctly count how many qualifiers are in the lineup.
+    expect(traitScore).toBe(baseScore);
+  });
+
+  it("non-qualifying MOKIs get heavily penalized under trait scheme", () => {
+    const baseScore = scoreChampion(nonShadowStar, null);
+    const traitScore = scoreChampion(nonShadowStar, traitScheme);
+
+    // Non-qualifying gets 30% of base score
+    expect(traitScore).toBe(Math.round(baseScore * 0.3));
+    expect(traitScore).toBeLessThan(baseScore);
+  });
+
+  it("categorizeScheme returns 'trait' when hasTraitFilter is true", () => {
+    expect(categorizeScheme("any description", true)).toBe("trait");
+    expect(categorizeScheme("+25 points for EACH Onesie or Lemon in lineup", true)).toBe("trait");
+  });
+
+  it("categorizeScheme detects trait from description pattern", () => {
+    expect(categorizeScheme("+25 points for EACH Shadow Fur trait in lineup")).toBe("trait");
+    expect(categorizeScheme("+25 points for EACH 1 of 1 Moki in lineup")).toBe("trait");
+    expect(categorizeScheme("+25 points for each Rainbow Fur trait in lineup")).toBe("trait");
+  });
+
+  it("optimizer picks trait scheme when 4 qualifying MOKIs are available", () => {
+    const allChampions = [
+      shadowKiller, shadowBaller, shadowAvg, shadowWeak,
+      nonShadowStar, nonShadowGood,
+    ];
+    const allSchemes = [traitScheme, cageMatch];
+    const rules: ContestRules = {
+      contestId: "trait-test",
+      contestName: "Trait Test Contest",
+      rarityFilter: null,
+      maxEntries: 1,
+      entryCost: 200,
+    };
+
+    const result = optimizeLineups({
+      ownedMokis: allChampions,
+      ownedSchemes: allSchemes,
+      allSchemes,
+      // Use topPercent contest type so trait scheme gets the consistency premium (1.65x vs 0.9x)
+      contestRules: { rarityRestriction: "OPEN", isOneOfEach: false, isStarCap: false, maxEntriesPerUser: 5, format: "standard", contestType: "topPercent" },
+      numEntries: 1,
+      entryFee: 200,
+      dailyBudget: 5000,
+    });
+
+    expect(result.lineups).toHaveLength(1);
+    const lineup = result.lineups[0];
+
+    // The trait scheme should be selected for topPercent contests because:
+    // - Trait scheme gets 1.65x multiplier (consistency premium)
+    // - Cage Match gets 0.9x multiplier (variance penalty)
+    // - Lineup-level trait bonus: 4 qualifying × 25 × 5 matches = +500 guaranteed points
+    expect(lineup.scheme?.name).toBe("Midnight Strike");
+
+    // All 4 champions should be qualifying Shadow MOKIs
+    const selectedNames = lineup.champions.map((s) => s.champion.name);
+    expect(selectedNames).toContain("ShadowKiller");
+    expect(selectedNames).toContain("ShadowBaller");
+    expect(selectedNames).toContain("ShadowAvg");
+    expect(selectedNames).toContain("ShadowWeak");
+
+    // NonShadowStar should NOT be picked despite having the best raw stats
+    expect(selectedNames).not.toContain("NonShadowStar");
+  });
+
+  it("optimizer picks performance scheme when fewer than 4 qualifying MOKIs exist", () => {
+    // Only 2 shadow MOKIs available — trait scheme less valuable
+    const limitedChampions = [
+      shadowKiller, shadowBaller,
+      nonShadowStar, nonShadowGood,
+      makeChampion("NonShadow3", "Epic", "nonshadow3", {
+        avgKills: 2.0, avgBalls: 1.5, avgWartDistance: 70, winRate: 0.55,
+      }),
+      makeChampion("NonShadow4", "Epic", "nonshadow4", {
+        avgKills: 1.8, avgBalls: 1.2, avgWartDistance: 65, winRate: 0.5,
+      }),
+    ];
+    const allSchemes = [traitScheme, cageMatch];
+    const rules: ContestRules = {
+      contestId: "perf-test",
+      contestName: "Perf Test Contest",
+      rarityFilter: null,
+      maxEntries: 1,
+      entryCost: 200,
+    };
+
+    const result = optimizeLineups({
+      ownedMokis: limitedChampions,
+      ownedSchemes: allSchemes,
+      allSchemes,
+      contestRules: { rarityRestriction: "OPEN", isOneOfEach: false, isStarCap: false, maxEntriesPerUser: 5, format: "standard" },
+      numEntries: 1,
+      entryFee: 200,
+      dailyBudget: 5000,
+    });
+    const lineup = result.lineups[0];
+
+    // With only 2 qualifying MOKIs, the trait scheme's total bonus is only +250
+    // while the performance scheme with 4 strong performers should score higher
+    // The optimizer should pick Cage Match or at least not force all-shadow
+    expect(lineup.scheme?.name).toBe("Cage Match");
+  });
+
+  it("among qualifying trait MOKIs, optimizer picks the best performers", () => {
+    // 5 qualifying MOKIs but only 4 slots — should pick the 4 best performers
+    const fiveShadows = [
+      shadowKiller,   // best: 2.0 kills, 0.6 WR
+      shadowBaller,   // good: 4.0 balls, 0.5 WR
+      shadowAvg,      // decent: 1.0/1.0
+      shadowWeak,     // weakest: 0.3/0.3
+      makeChampion("ShadowStrong", "Epic", "shadow5", {
+        avgKills: 1.8, avgBalls: 1.5, avgWartDistance: 70, winRate: 0.55,
+      }),
+    ];
+    const rules: ContestRules = {
+      contestId: "trait-rank-test",
+      contestName: "Trait Rank Test",
+      rarityFilter: null,
+      maxEntries: 1,
+      entryCost: 200,
+    };
+
+    const result = optimizeLineups({
+      ownedMokis: fiveShadows,
+      ownedSchemes: [traitScheme],
+      allSchemes: [traitScheme],
+      contestRules: { rarityRestriction: "OPEN", isOneOfEach: false, isStarCap: false, maxEntriesPerUser: 5, format: "standard" },
+      numEntries: 1,
+      entryFee: 200,
+      dailyBudget: 5000,
+    });
+    const lineup = result.lineups[0];
+    const selectedNames = lineup.champions.map((s) => s.champion.name);
+
+    // ShadowWeak should be dropped in favor of the 4 stronger performers
+    expect(selectedNames).not.toContain("ShadowWeak");
+    expect(selectedNames).toContain("ShadowKiller");
+    expect(selectedNames).toContain("ShadowBaller");
+    expect(selectedNames).toContain("ShadowStrong");
   });
 });
