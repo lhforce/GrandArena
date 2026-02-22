@@ -185,9 +185,27 @@ export const lineupRouter = router({
         console.error("[Optimizer] Failed to load empirical stats:", err);
       }
 
-      // Build blended performance stats (model + empirical)
+      // Load match history performance data (3rd data source)
+      const { getBulkMatchPerformance } = await import("./matchupAnalytics");
+      let matchPerformanceData = new Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number; totalMatches: number }>();
+      try {
+        // Collect all championTokenIds from the user's mokis
+        const champTokenIds = available.mokis
+          .map(m => m.championTokenId ? Number(m.championTokenId) : null)
+          .filter((id): id is number => id !== null && !isNaN(id));
+        if (champTokenIds.length > 0) {
+          matchPerformanceData = await getBulkMatchPerformance(champTokenIds);
+          if (matchPerformanceData.size > 0) {
+            console.log(`[Optimizer] Loaded match history data for ${matchPerformanceData.size} champions`);
+          }
+        }
+      } catch (err) {
+        console.error("[Optimizer] Failed to load match history data:", err);
+      }
+
+      // Build blended performance stats (model + empirical + match history)
       const performanceStats = new Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number }>();
-      const blendMetadata: Record<string, { dataSource: string; empiricalWeight: number; appearances: number }> = {};
+      const blendMetadata: Record<string, { dataSource: string; empiricalWeight: number; appearances: number; matchHistoryMatches: number }> = {};
 
       for (const row of statsRows) {
         const modelStats = {
@@ -199,7 +217,7 @@ export const lineupRouter = router({
 
         // Look up empirical data for this champion
         const empirical = empiricalResult.champions.get(row.championTokenId);
-        const rarity = row.fur ?? "Basic"; // Use fur as proxy; actual rarity comes from card
+        const rarity = row.fur ?? "Basic";
 
         // Find the card's actual rarity from the user's inventory
         const userCard = available.mokis.find(m => m.championTokenId === row.championTokenId);
@@ -207,17 +225,41 @@ export const lineupRouter = router({
 
         const blended = blendStats(modelStats, empirical, cardRarity);
 
-        performanceStats.set(row.championTokenId, {
+        // Layer 3: Blend in match history data (real match performance from GATracker)
+        // Match history is the most reliable source — actual kills/balls/wart from real games
+        const matchData = matchPerformanceData.get(row.championTokenId);
+        let finalStats = {
           avgKills: blended.avgKills,
           avgBalls: blended.avgBalls,
           avgWartDistance: blended.avgWartDistance,
           winRate: blended.winRate,
-        });
+        };
+        let matchHistoryMatches = 0;
+
+        if (matchData && matchData.totalMatches >= 10) {
+          // Match history confidence: scales from 0 at 10 matches to 0.6 at 100+ matches
+          const matchConfidence = Math.min(0.6, (matchData.totalMatches - 10) / 150);
+          matchHistoryMatches = matchData.totalMatches;
+
+          finalStats = {
+            avgKills: Math.round((finalStats.avgKills * (1 - matchConfidence) + matchData.avgKills * matchConfidence) * 100) / 100,
+            avgBalls: Math.round((finalStats.avgBalls * (1 - matchConfidence) + matchData.avgBalls * matchConfidence) * 100) / 100,
+            avgWartDistance: Math.round((finalStats.avgWartDistance * (1 - matchConfidence) + matchData.avgWartDistance * matchConfidence) * 100) / 100,
+            winRate: Math.round((finalStats.winRate * (1 - matchConfidence) + matchData.winRate * matchConfidence) * 1000) / 1000,
+          };
+        }
+
+        performanceStats.set(row.championTokenId, finalStats);
+
+        const dataSource = matchData && matchData.totalMatches >= 10
+          ? (blended.dataSource === "model" ? "match_history" : `${blended.dataSource}+match`)
+          : blended.dataSource;
 
         blendMetadata[row.championTokenId] = {
-          dataSource: blended.dataSource,
+          dataSource,
           empiricalWeight: blended.empiricalWeight,
           appearances: blended.empiricalAppearances,
+          matchHistoryMatches,
         };
       }
 
@@ -273,6 +315,10 @@ export const lineupRouter = router({
           totalContestsAnalyzed: empiricalResult.totalContestsAnalyzed,
           championsWithData: empiricalResult.champions.size,
           blendMetadata,
+        },
+        matchHistoryData: {
+          championsWithMatchData: matchPerformanceData.size,
+          totalMatchesInDb: Array.from(matchPerformanceData.values()).reduce((sum, d) => sum + d.totalMatches, 0),
         },
       };
     }),

@@ -21,6 +21,11 @@ import {
   getBestWorstMatchups,
   getMatchDataSummary,
 } from "./matchupAnalytics";
+import {
+  analyzeMatchupsAndRecommendSwaps,
+  loadGameDataLookup,
+  getUserBenchChampions,
+} from "./swapAdvisor";
 
 export const matchupRouter = router({
   /**
@@ -174,4 +179,52 @@ export const matchupRouter = router({
   dataSummary: publicProcedure.query(async () => {
     return getMatchDataSummary();
   }),
+
+  // ─── Swap Advisor ──────────────────────────────────────────────────
+
+  /**
+   * Analyze current matchups and recommend swaps.
+   * Input: your 4 champion IDs, opponent 4 champion IDs, optional bench IDs.
+   * If no bench IDs provided and user is logged in, uses their full inventory.
+   */
+  analyzeSwaps: publicProcedure
+    .input(
+      z.object({
+        yourChampionIds: z.array(z.number()).length(4),
+        opponentChampionIds: z.array(z.number()).length(4),
+        benchChampionIds: z.array(z.number()).optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const gameData = await loadGameDataLookup();
+
+      // If no bench provided and user is logged in, get their full inventory
+      let benchIds = input.benchChampionIds ?? [];
+      if (benchIds.length === 0 && ctx.user) {
+        benchIds = await getUserBenchChampions(ctx.user.id, input.yourChampionIds);
+      }
+
+      const result = await analyzeMatchupsAndRecommendSwaps(
+        input.yourChampionIds,
+        input.opponentChampionIds,
+        benchIds,
+        gameData
+      );
+
+      return result;
+    }),
+
+  /**
+   * Quick H2H lookup for a single matchup pair (used by swap advisor UI).
+   */
+  quickH2h: publicProcedure
+    .input(
+      z.object({
+        championId: z.number(),
+        opponentId: z.number(),
+      })
+    )
+    .query(async ({ input }) => {
+      return getHeadToHead(input.championId, input.opponentId);
+    }),
 });

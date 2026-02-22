@@ -564,3 +564,103 @@ export async function getMatchDataSummary(): Promise<{
     winTypeBreakdown,
   };
 }
+
+
+/**
+ * Get match-derived performance stats for multiple champions at once.
+ * Used by the lineup optimizer to blend match data into scoring.
+ * Returns a Map keyed by championTokenId (as string, matching championStats format).
+ */
+export async function getBulkMatchPerformance(
+  championTokenIds: number[]
+): Promise<Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number; totalMatches: number }>> {
+  const db = await getDb();
+  const result = new Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number; totalMatches: number }>();
+  if (!db || championTokenIds.length === 0) return result;
+
+  const rows = await db.execute(sql`
+    SELECT 
+      championTokenId,
+      COUNT(*) AS totalMatches,
+      ROUND(AVG(kills), 4) AS avgKills,
+      ROUND(AVG(balls), 4) AS avgBalls,
+      ROUND(AVG(wartDistance), 4) AS avgWart,
+      ROUND(SUM(CASE WHEN isWinner = 1 THEN 1 ELSE 0 END) / COUNT(*), 4) AS winRate
+    FROM match_player_stats
+    WHERE championTokenId IN (${sql.join(championTokenIds.map(id => sql`${id}`), sql`, `)})
+    GROUP BY championTokenId
+  `);
+
+  const data = (rows as any)[0] as any[];
+  if (!data) return result;
+
+  for (const row of data) {
+    // Key as string to match championStats.championTokenId format
+    result.set(String(row.championTokenId), {
+      avgKills: Number(row.avgKills) || 0,
+      avgBalls: Number(row.avgBalls) || 0,
+      avgWartDistance: Number(row.avgWart) || 0,
+      winRate: Number(row.winRate) || 0,
+      totalMatches: Number(row.totalMatches) || 0,
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Get H2H win rates for a set of champions against a set of opponents.
+ * Returns a nested Map: champId -> oppId -> { wins, losses, winRate, totalMatches }.
+ * Used by the swap advisor to evaluate all possible matchup permutations.
+ */
+export async function getBulkHeadToHead(
+  championTokenIds: number[],
+  opponentTokenIds: number[]
+): Promise<Map<number, Map<number, { wins: number; losses: number; winRate: number; totalMatches: number; avgKills: number; avgBalls: number; avgWart: number }>>> {
+  const db = await getDb();
+  const result = new Map<number, Map<number, { wins: number; losses: number; winRate: number; totalMatches: number; avgKills: number; avgBalls: number; avgWart: number }>>();
+  if (!db || championTokenIds.length === 0 || opponentTokenIds.length === 0) return result;
+
+  const rows = await db.execute(sql`
+    SELECT 
+      a.championTokenId AS champId,
+      b.championTokenId AS oppId,
+      COUNT(*) AS totalMatches,
+      SUM(CASE WHEN a.isWinner = 1 THEN 1 ELSE 0 END) AS wins,
+      SUM(CASE WHEN a.isWinner = 0 THEN 1 ELSE 0 END) AS losses,
+      ROUND(AVG(a.kills), 2) AS avgKills,
+      ROUND(AVG(a.balls), 2) AS avgBalls,
+      ROUND(AVG(a.wartDistance), 2) AS avgWart
+    FROM match_player_stats a
+    JOIN match_player_stats b ON a.matchId = b.matchId AND a.team != b.team
+    WHERE a.championTokenId IN (${sql.join(championTokenIds.map(id => sql`${id}`), sql`, `)})
+      AND b.championTokenId IN (${sql.join(opponentTokenIds.map(id => sql`${id}`), sql`, `)})
+    GROUP BY a.championTokenId, b.championTokenId
+  `);
+
+  const data = (rows as any)[0] as any[];
+  if (!data) return result;
+
+  for (const row of data) {
+    const champId = Number(row.champId);
+    const oppId = Number(row.oppId);
+    const total = Number(row.totalMatches);
+    const wins = Number(row.wins);
+    const losses = Number(row.losses);
+
+    if (!result.has(champId)) {
+      result.set(champId, new Map());
+    }
+    result.get(champId)!.set(oppId, {
+      wins,
+      losses,
+      winRate: total > 0 ? Math.round((wins / total) * 10000) / 100 : 50,
+      totalMatches: total,
+      avgKills: Number(row.avgKills) || 0,
+      avgBalls: Number(row.avgBalls) || 0,
+      avgWart: Number(row.avgWart) || 0,
+    });
+  }
+
+  return result;
+}

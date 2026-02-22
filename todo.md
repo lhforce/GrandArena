@@ -178,5 +178,18 @@
 - [x] Calculate per-champion real performance stats (kills, balls, wart) from actual matches
 - [x] Calculate class-vs-class matchup advantages
 - [x] Build Matchup Intelligence UI page with champion lookup and head-to-head comparison
-- [ ] Integrate match-derived performance stats into lineup optimizer scoring
+- [x] Integrate match-derived performance stats into lineup optimizer scoring
 - [ ] Add "Scrape Match History" button to Dashboard
+
+## H2H Integration into Lineup Optimizer
+- [x] Add H2H match performance data as a third data source in optimizer scoring
+- [x] Create getBulkMatchPerformance() function for efficient batch lookup
+- [x] Blend match-derived stats with model + empirical stats in lineupRouter optimize procedure
+- [x] Show H2H data source indicator in lineup builder results
+
+## Post-Entry Swap Advisor
+- [x] Build swapAdvisor.ts engine that analyzes lineup vs opponent matchups
+- [x] Create tRPC procedures for swap analysis (input: your lineup + opponent lineup)
+- [x] Build SwapAdvisor UI page with lineup input and swap recommendations
+- [x] Add SwapAdvisor to sidebar navigation
+- [x] Write tests for swap advisor logic
