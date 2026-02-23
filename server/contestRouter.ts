@@ -165,6 +165,7 @@ export const contestRouter = router({
       totalLeaderboardEntries: Number(totalEntries[0]?.count ?? 0),
       identifiedEntries: Number(identifiedEntries[0]?.count ?? 0),
       lastScrapeJob: lastJob[0] ?? null,
+      isIdentificationRunning: isIdentificationRunning(),
     };
   }),
 

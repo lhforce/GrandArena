@@ -32,11 +32,13 @@ export default function Dashboard() {
   const [scraping, setScraping] = useState(false);
   const [identifying, setIdentifying] = useState(false);
 
+  // Poll every 3s when locally triggered, or when server reports identification is running (auto-resume)
   const stats = trpc.contests.stats.useQuery(undefined, {
-    refetchInterval: scraping || identifying ? 3000 : false,
+    refetchInterval: 5000, // always poll every 5s to catch auto-resume
   });
+  const serverIdentifying = stats.data?.isIdentificationRunning ?? false;
   const jobs = trpc.contests.scrapeJobs.useQuery({ limit: 5 }, {
-    refetchInterval: scraping || identifying ? 3000 : false,
+    refetchInterval: (scraping || identifying || serverIdentifying) ? 3000 : 10000,
   });
   const utils = trpc.useUtils();
 

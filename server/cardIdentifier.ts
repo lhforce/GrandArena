@@ -273,8 +273,8 @@ export async function processUnidentifiedEntries(
       processed++;
       console.log(`[CardIdentifier] Identified: ${result.champions.map(c => c.name).join(", ")} | Scheme: ${result.scheme} | Confidence: ${result.overallConfidence}`);
 
-      // Rate limit: wait 500ms between API calls
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Rate limit: wait 200ms between API calls to avoid overwhelming the LLM
+      await new Promise(resolve => setTimeout(resolve, 200));
     } catch (err) {
       console.error(`[CardIdentifier] Error processing entry ${entry.id}:`, err);
       errors++;
@@ -315,10 +315,10 @@ export async function runIdentificationPipeline(topN: number = 10): Promise<{
   let totalErrors = 0;
 
   try {
-    // Process in batches
+    // Process in batches of 50 entries at a time
     let hasMore = true;
     while (hasMore) {
-      const { processed, errors } = await processUnidentifiedEntries({ limit: 20, topN });
+      const { processed, errors } = await processUnidentifiedEntries({ limit: 50, topN });
       totalProcessed += processed;
       totalErrors += errors;
       
@@ -349,4 +349,43 @@ export async function runIdentificationPipeline(topN: number = 10): Promise<{
 
   identificationRunning = false;
   return { processed: totalProcessed, errors: totalErrors };
+}
+
+/**
+ * Auto-resume identification on server startup.
+ * Checks if there are any unprocessed entries and starts the pipeline silently.
+ * This ensures identification continues after server restarts.
+ */
+export async function autoResumeIdentification(): Promise<void> {
+  try {
+    const db = await getDb();
+    if (!db) return;
+
+    // Check if there are unprocessed entries (top 10 per contest)
+    const unprocessed = await db
+      .select({ id: leaderboardEntries.id })
+      .from(leaderboardEntries)
+      .where(
+        and(
+          isNull(leaderboardEntries.aiProcessedAt),
+          sql`${leaderboardEntries.rank} <= 10`
+        )
+      )
+      .limit(1);
+
+    if (unprocessed.length === 0) {
+      console.log("[CardIdentifier] Auto-resume: all entries already identified, nothing to do.");
+      return;
+    }
+
+    console.log("[CardIdentifier] Auto-resume: unprocessed entries found, starting identification pipeline...");
+    // Fire and forget — runs in background
+    runIdentificationPipeline(10).then(result => {
+      console.log(`[CardIdentifier] Auto-resume complete: ${result.processed} processed, ${result.errors} errors`);
+    }).catch(err => {
+      console.error("[CardIdentifier] Auto-resume failed:", err);
+    });
+  } catch (err) {
+    console.error("[CardIdentifier] Auto-resume check failed:", err);
+  }
 }

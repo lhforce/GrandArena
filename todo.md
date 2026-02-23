@@ -323,3 +323,8 @@
 - [x] Remove Matchup Intel page, route, sidebar nav, backend router, and test file
 - [x] Remove Swap Advisor page, route, sidebar nav, backend router, and test file
 - [x] Ensure no remaining references to MatchupIntel or SwapAdvisor anywhere in codebase
+
+## Fix: AI Identification Pipeline
+- [x] Auto-resume AI identification on server startup (don't just mark stale jobs as failed)
+- [x] Increase batch size and reduce delay to process 8,019 unidentified entries faster
+- [x] Add progress tracking so Dashboard shows real-time count during identification

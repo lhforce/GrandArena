@@ -63,9 +63,12 @@ async function startServer() {
 }
 
 startServer().then(() => {
-  // Clean up stale AI identification jobs from previous server session
-  import("../cardIdentifier").then(({ cleanupStaleIdentificationJobs }) => {
-    cleanupStaleIdentificationJobs();
+  // Clean up stale AI identification jobs and auto-resume processing
+  import("../cardIdentifier").then(({ cleanupStaleIdentificationJobs, autoResumeIdentification }) => {
+    cleanupStaleIdentificationJobs().then(() => {
+      // Auto-resume identification of any unprocessed entries in background
+      autoResumeIdentification();
+    });
   }).catch((err) => {
     console.error("[Startup] Failed to clean up stale jobs:", err);
   });
