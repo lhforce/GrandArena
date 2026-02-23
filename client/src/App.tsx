@@ -16,7 +16,7 @@ import Settings from "@/pages/Settings";
 import OpponentCrusher from "@/pages/OpponentCrusher";
 import MetaReport from "@/pages/MetaReport";
 import ChampionDeepDive from "@/pages/ChampionDeepDive";
-import LegendaryAdvisor from "@/pages/LegendaryAdvisor";
+import CardCrafter from "@/pages/CardCrafter";
 
 function Router() {
   return (
@@ -31,7 +31,7 @@ function Router() {
         <Route path="/opponent-crusher" component={OpponentCrusher} />
         <Route path="/meta-report" component={MetaReport} />
         <Route path="/champion-deep-dive" component={ChampionDeepDive} />
-        <Route path="/legendary-advisor" component={LegendaryAdvisor} />
+        <Route path="/card-crafter" component={CardCrafter} />
         <Route path="/telegram-alerts" component={TelegramAlerts} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />

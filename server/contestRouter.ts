@@ -88,7 +88,7 @@ export const contestRouter = router({
     .input(z.object({
       rarityRestriction: z.string().optional(),
       format: z.string().optional(),
-      limit: z.number().min(1).max(50).default(20),
+      limit: z.number().min(1).max(100).default(50),
     }))
     .query(async ({ input }) => {
       const db = await getDb();
@@ -106,27 +106,90 @@ export const contestRouter = router({
         conditions.push(eq(contests.format, input.format));
       }
 
+      // Fetch top-10 entries per contest
       const results = await db.select({
         entryId: leaderboardEntries.id,
+        contestId: leaderboardEntries.contestId,
         rank: leaderboardEntries.rank,
         score: leaderboardEntries.score,
         identifiedChampions: leaderboardEntries.identifiedChampions,
         identifiedScheme: leaderboardEntries.identifiedScheme,
         aiConfidence: leaderboardEntries.aiConfidence,
         cardImages: leaderboardEntries.cardImages,
+        estimatedPayout: leaderboardEntries.estimatedPayout,
         contestName: contests.name,
         contestFormat: contests.format,
+        contestDescription: contests.description,
         rarityRestriction: contests.rarityRestriction,
         prizePool: contests.prizePool,
-        estimatedPayout: leaderboardEntries.estimatedPayout,
+        entryFee: contests.entryFee,
+        isStarCap: contests.isStarCap,
+        isOneOfEach: contests.isOneOfEach,
+        scoringMethod: contests.scoringMethod,
       })
         .from(leaderboardEntries)
         .innerJoin(contests, eq(leaderboardEntries.contestId, contests.id))
         .where(and(...conditions))
         .orderBy(asc(leaderboardEntries.rank))
-        .limit(input.limit);
+        .limit(500); // fetch enough to group by contest
 
-      return results;
+      // Group by contest
+      const contestMap = new Map<string, {
+        contestId: string;
+        contestName: string;
+        contestFormat: string;
+        contestDescription: string | null;
+        rarityRestriction: string | null;
+        prizePool: string | null;
+        entryFee: number | null;
+        isStarCap: boolean | null;
+        isOneOfEach: boolean | null;
+        scoringMethod: string | null;
+        entries: Array<{
+          entryId: number;
+          rank: number;
+          score: number;
+          identifiedChampions: unknown;
+          identifiedScheme: string | null;
+          aiConfidence: string | null;
+          cardImages: unknown;
+          estimatedPayout: string | null;
+        }>;
+      }>();
+
+      for (const r of results) {
+        const key = String(r.contestId);
+        if (!contestMap.has(key)) {
+          contestMap.set(key, {
+            contestId: key,
+            contestName: r.contestName,
+            contestFormat: r.contestFormat,
+            contestDescription: r.contestDescription,
+            rarityRestriction: r.rarityRestriction,
+            prizePool: r.prizePool,
+            entryFee: r.entryFee,
+            isStarCap: r.isStarCap,
+            isOneOfEach: r.isOneOfEach,
+            scoringMethod: r.scoringMethod,
+            entries: [],
+          });
+        }
+        const contest = contestMap.get(key)!;
+        if (contest.entries.length < 10) {
+          contest.entries.push({
+            entryId: r.entryId,
+            rank: r.rank,
+            score: r.score,
+            identifiedChampions: r.identifiedChampions,
+            identifiedScheme: r.identifiedScheme,
+            aiConfidence: r.aiConfidence,
+            cardImages: r.cardImages,
+            estimatedPayout: r.estimatedPayout,
+          });
+        }
+      }
+
+      return Array.from(contestMap.values()).slice(0, input.limit);
     }),
 
   /**

@@ -328,3 +328,17 @@
 - [x] Auto-resume AI identification on server startup (don't just mark stale jobs as failed)
 - [x] Increase batch size and reduce delay to process 8,019 unidentified entries faster
 - [x] Add progress tracking so Dashboard shows real-time count during identification
+
+## Winning Lineups Overhaul + Card Crafter
+- [x] Fix rarity colors: Rare=Green, Epic=Purple, Legendary=Pink (Basic=Grey stays)
+- [x] Make card images 75% larger in Winning Lineups
+- [x] Show champion names underneath card images
+- [x] Display which Scheme card was used in each lineup
+- [x] Show top 10 lineups per contest: top 1 visible, ranks 2-10 in accordion
+- [x] Add contest rules under contest title
+- [x] Fix payout amount display (use API data, show correct USD)
+- [x] Add Owned/Buy indicator above each card with marketplace price for Buy
+- [x] Add craft-vs-buy comparison: show lowest marketplace price vs crafting cost, link to Card Crafter
+- [x] Rename Legendary Builder to Card Crafter (sidebar, page title, route)
+- [x] Add Rare crafting (3 Basic → 1 Rare) and Epic crafting (10 Rare → 1 Epic) to Card Crafter
+- [x] Update Legendary crafting recipe to 8 Epic → 1 Legendary

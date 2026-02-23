@@ -1,20 +1,15 @@
 /**
- * Legendary Card Acquisition Advisor
+ * Card Crafter — Multi-rarity Acquisition Advisor
  *
  * Ranks the best MOKIs for a given scheme by avg score then win%,
- * checks which ones the user already owns as Legendary,
+ * checks which ones the user already owns at the target rarity,
  * fetches Ronin Marketplace floor prices for all rarities,
- * and calculates the most economical path to acquiring a Legendary card.
+ * and calculates the most economical path to acquiring the target rarity card.
  *
  * Crafting ratios (free to craft, no gem cost):
  *   3 Basic  → 1 Rare
  *   10 Rare  → 1 Epic
  *   8 Epic   → 1 Legendary
- *
- * Therefore to craft 1 Legendary from scratch:
- *   8 Epic   → 1 Legendary
- *   80 Rare  → 8 Epic → 1 Legendary
- *   240 Basic → 80 Rare → 8 Epic → 1 Legendary
  */
 
 import { getDb } from "./db";
@@ -32,9 +27,12 @@ const BASICS_PER_RARE = 3;
 const RARES_PER_EPIC = 10;
 const EPICS_PER_LEGENDARY = 8;
 
-// Derived totals to craft 1 Legendary from scratch
+// Derived totals
 const RARES_FOR_LEGENDARY = RARES_PER_EPIC * EPICS_PER_LEGENDARY; // 80
 const BASICS_FOR_LEGENDARY = BASICS_PER_RARE * RARES_FOR_LEGENDARY; // 240
+const BASICS_FOR_EPIC = BASICS_PER_RARE * RARES_PER_EPIC; // 30
+
+type TargetRarity = "Rare" | "Epic" | "Legendary";
 
 interface ChampionRanking {
   championTokenId: string;
@@ -56,7 +54,7 @@ interface PriceData {
 }
 
 interface AcquisitionOption {
-  method: "buy_legendary" | "craft_from_epic" | "craft_from_rare" | "craft_from_basic";
+  method: string;
   label: string;
   totalCostRON: number | null;
   cardsNeeded: number;
@@ -64,7 +62,7 @@ interface AcquisitionOption {
   available: boolean;
 }
 
-export interface LegendaryAdvisorEntry {
+export interface CardCrafterEntry {
   rank: number;
   championTokenId: string;
   name: string;
@@ -74,19 +72,24 @@ export interface LegendaryAdvisorEntry {
   avgBalls: number;
   avgWartDistance: number;
   totalMatches: number;
-  ownsLegendary: boolean;
+  ownsTarget: boolean;
   ownedRarity: string | null; // highest rarity owned
   acquisitionOptions: AcquisitionOption[];
   cheapestOption: AcquisitionOption | null;
   cheapestCostRON: number | null;
 }
 
-export interface LegendaryAdvisorResult {
+export interface CardCrafterResult {
   schemeName: string;
-  topChampions: LegendaryAdvisorEntry[];
-  totalLegendariesOwned: number;
+  targetRarity: TargetRarity;
+  topChampions: CardCrafterEntry[];
+  totalTargetOwned: number;
   fetchedAt: string;
 }
+
+// Keep backward compat aliases
+export type LegendaryAdvisorEntry = CardCrafterEntry;
+export type LegendaryAdvisorResult = CardCrafterResult;
 
 // ─── Marketplace Pricing ──────────────────────────────────────────────
 
@@ -138,7 +141,6 @@ async function fetchFloorPrices(championName: string): Promise<PriceData> {
         };
         const r = data.erc721Tokens.results;
         if (r.length > 0 && r[0]?.order?.currentPrice) {
-          // RON uses 18 decimals (wei)
           const price = Number(BigInt(r[0].order.currentPrice)) / 1e18;
           prices[rarity] = Math.round(price * 100) / 100;
         }
@@ -153,51 +155,107 @@ async function fetchFloorPrices(championName: string): Promise<PriceData> {
 
 // ─── Acquisition Cost Calculator ─────────────────────────────────────
 
-function calculateAcquisitionOptions(prices: PriceData): AcquisitionOption[] {
+function calculateAcquisitionOptions(prices: PriceData, targetRarity: TargetRarity): AcquisitionOption[] {
   const options: AcquisitionOption[] = [];
 
-  // Option 1: Buy Legendary directly
-  options.push({
-    method: "buy_legendary",
-    label: "Buy Legendary directly",
-    totalCostRON: prices.Legendary,
-    cardsNeeded: 1,
-    unitPrice: prices.Legendary,
-    available: prices.Legendary !== null,
-  });
+  if (targetRarity === "Rare") {
+    // Option 1: Buy Rare directly
+    options.push({
+      method: "buy_rare",
+      label: "Buy Rare directly",
+      totalCostRON: prices.Rare,
+      cardsNeeded: 1,
+      unitPrice: prices.Rare,
+      available: prices.Rare !== null,
+    });
 
-  // Option 2: Buy 8 Epics and craft → 1 Legendary
-  const craftFromEpicCost = prices.Epic !== null ? prices.Epic * EPICS_PER_LEGENDARY : null;
-  options.push({
-    method: "craft_from_epic",
-    label: `Buy ${EPICS_PER_LEGENDARY} Epics → craft Legendary`,
-    totalCostRON: craftFromEpicCost,
-    cardsNeeded: EPICS_PER_LEGENDARY,
-    unitPrice: prices.Epic,
-    available: prices.Epic !== null,
-  });
+    // Option 2: Buy 3 Basics → craft 1 Rare
+    const craftFromBasicCost = prices.Basic !== null ? prices.Basic * BASICS_PER_RARE : null;
+    options.push({
+      method: "craft_from_basic",
+      label: `Buy ${BASICS_PER_RARE} Basics → craft Rare`,
+      totalCostRON: craftFromBasicCost,
+      cardsNeeded: BASICS_PER_RARE,
+      unitPrice: prices.Basic,
+      available: prices.Basic !== null,
+    });
+  } else if (targetRarity === "Epic") {
+    // Option 1: Buy Epic directly
+    options.push({
+      method: "buy_epic",
+      label: "Buy Epic directly",
+      totalCostRON: prices.Epic,
+      cardsNeeded: 1,
+      unitPrice: prices.Epic,
+      available: prices.Epic !== null,
+    });
 
-  // Option 3: Buy 80 Rares → 8 Epics → 1 Legendary
-  const craftFromRareCost = prices.Rare !== null ? prices.Rare * RARES_FOR_LEGENDARY : null;
-  options.push({
-    method: "craft_from_rare",
-    label: `Buy ${RARES_FOR_LEGENDARY} Rares → craft to Legendary`,
-    totalCostRON: craftFromRareCost,
-    cardsNeeded: RARES_FOR_LEGENDARY,
-    unitPrice: prices.Rare,
-    available: prices.Rare !== null,
-  });
+    // Option 2: Buy 10 Rares → craft 1 Epic
+    const craftFromRareCost = prices.Rare !== null ? prices.Rare * RARES_PER_EPIC : null;
+    options.push({
+      method: "craft_from_rare",
+      label: `Buy ${RARES_PER_EPIC} Rares → craft Epic`,
+      totalCostRON: craftFromRareCost,
+      cardsNeeded: RARES_PER_EPIC,
+      unitPrice: prices.Rare,
+      available: prices.Rare !== null,
+    });
 
-  // Option 4: Buy 240 Basics → 80 Rares → 8 Epics → 1 Legendary
-  const craftFromBasicCost = prices.Basic !== null ? prices.Basic * BASICS_FOR_LEGENDARY : null;
-  options.push({
-    method: "craft_from_basic",
-    label: `Buy ${BASICS_FOR_LEGENDARY} Basics → craft to Legendary`,
-    totalCostRON: craftFromBasicCost,
-    cardsNeeded: BASICS_FOR_LEGENDARY,
-    unitPrice: prices.Basic,
-    available: prices.Basic !== null,
-  });
+    // Option 3: Buy 30 Basics → 10 Rares → 1 Epic
+    const craftFromBasicCost = prices.Basic !== null ? prices.Basic * BASICS_FOR_EPIC : null;
+    options.push({
+      method: "craft_from_basic",
+      label: `Buy ${BASICS_FOR_EPIC} Basics → craft to Epic`,
+      totalCostRON: craftFromBasicCost,
+      cardsNeeded: BASICS_FOR_EPIC,
+      unitPrice: prices.Basic,
+      available: prices.Basic !== null,
+    });
+  } else {
+    // Legendary
+    // Option 1: Buy Legendary directly
+    options.push({
+      method: "buy_legendary",
+      label: "Buy Legendary directly",
+      totalCostRON: prices.Legendary,
+      cardsNeeded: 1,
+      unitPrice: prices.Legendary,
+      available: prices.Legendary !== null,
+    });
+
+    // Option 2: Buy 8 Epics → craft 1 Legendary
+    const craftFromEpicCost = prices.Epic !== null ? prices.Epic * EPICS_PER_LEGENDARY : null;
+    options.push({
+      method: "craft_from_epic",
+      label: `Buy ${EPICS_PER_LEGENDARY} Epics → craft Legendary`,
+      totalCostRON: craftFromEpicCost,
+      cardsNeeded: EPICS_PER_LEGENDARY,
+      unitPrice: prices.Epic,
+      available: prices.Epic !== null,
+    });
+
+    // Option 3: Buy 80 Rares → 8 Epics → 1 Legendary
+    const craftFromRareCost = prices.Rare !== null ? prices.Rare * RARES_FOR_LEGENDARY : null;
+    options.push({
+      method: "craft_from_rare",
+      label: `Buy ${RARES_FOR_LEGENDARY} Rares → craft to Legendary`,
+      totalCostRON: craftFromRareCost,
+      cardsNeeded: RARES_FOR_LEGENDARY,
+      unitPrice: prices.Rare,
+      available: prices.Rare !== null,
+    });
+
+    // Option 4: Buy 240 Basics → 80 Rares → 8 Epics → 1 Legendary
+    const craftFromBasicCost = prices.Basic !== null ? prices.Basic * BASICS_FOR_LEGENDARY : null;
+    options.push({
+      method: "craft_from_basic",
+      label: `Buy ${BASICS_FOR_LEGENDARY} Basics → craft to Legendary`,
+      totalCostRON: craftFromBasicCost,
+      cardsNeeded: BASICS_FOR_LEGENDARY,
+      unitPrice: prices.Basic,
+      available: prices.Basic !== null,
+    });
+  }
 
   return options;
 }
@@ -218,7 +276,6 @@ async function rankChampionsForScheme(
   if (!db) throw new Error("Database not available");
   const gameData = loadGameData();
 
-  // Find qualifying champions for this scheme
   const scheme = gameData.schemes.find(
     (s) => s.name.toLowerCase() === schemeName.toLowerCase()
   );
@@ -231,7 +288,6 @@ async function rankChampionsForScheme(
     return [];
   }
 
-  // Query Season 1 match stats for qualifying champions
   const rows = await db
     .select({
       championTokenId: matchPlayerStats.championTokenId,
@@ -253,13 +309,11 @@ async function rankChampionsForScheme(
     .groupBy(matchPlayerStats.championTokenId)
     .having(sql`COUNT(*) >= 5`);
 
-  // Build name lookup from game data
   const nameMap = new Map<string, string>();
   for (const c of scheme.qualifyingChampions) {
     nameMap.set(c.championTokenId, c.name);
   }
 
-  // Sort: primary = avgScore desc, secondary = winRate desc
   const ranked = rows
     .map((r) => ({
       championTokenId: String(r.championTokenId),
@@ -287,8 +341,9 @@ async function rankChampionsForScheme(
 export async function getLegendaryAdvisory(
   schemeName: string,
   userId: number,
-  topN: number = 10
-): Promise<LegendaryAdvisorResult> {
+  topN: number = 10,
+  targetRarity: TargetRarity = "Legendary"
+): Promise<CardCrafterResult> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
@@ -298,13 +353,14 @@ export async function getLegendaryAdvisory(
   if (rankings.length === 0) {
     return {
       schemeName,
+      targetRarity,
       topChampions: [],
-      totalLegendariesOwned: 0,
+      totalTargetOwned: 0,
       fetchedAt: new Date().toISOString(),
     };
   }
 
-  // 2. Check which ones the user owns (any rarity) and specifically Legendary
+  // 2. Check which ones the user owns (any rarity)
   const championIds = rankings.map((r) => r.championTokenId);
   const ownedCards = await db
     .select({
@@ -331,10 +387,15 @@ export async function getLegendaryAdvisory(
     }
   }
 
-  // 3. Fetch marketplace prices for champions that don't have Legendary yet
-  const needsPricing = rankings.filter(
-    (r) => ownershipMap.get(r.championTokenId) !== "Legendary"
-  );
+  // 3. Check if user owns the target rarity or higher
+  const targetRarityIndex = rarityOrder.indexOf(targetRarity);
+
+  // 4. Fetch marketplace prices for champions that need the target rarity
+  const needsPricing = rankings.filter((r) => {
+    const ownedRarity = ownershipMap.get(r.championTokenId);
+    if (!ownedRarity) return true;
+    return rarityOrder.indexOf(ownedRarity) < targetRarityIndex;
+  });
 
   const priceMap = new Map<string, PriceData>();
   await Promise.all(
@@ -348,27 +409,29 @@ export async function getLegendaryAdvisory(
     })
   );
 
-  // 4. Build advisor entries
-  let totalLegendariesOwned = 0;
-  const topChampions: LegendaryAdvisorEntry[] = rankings.map((r) => {
+  // 5. Build advisor entries
+  let totalTargetOwned = 0;
+  const topChampions: CardCrafterEntry[] = rankings.map((r) => {
     const ownedRarity = ownershipMap.get(r.championTokenId) ?? null;
-    const ownsLegendary = ownedRarity === "Legendary";
+    const ownsTarget = ownedRarity !== null && rarityOrder.indexOf(ownedRarity) >= targetRarityIndex;
 
-    if (ownsLegendary) totalLegendariesOwned++;
+    if (ownsTarget) totalTargetOwned++;
 
-    if (ownsLegendary) {
+    if (ownsTarget) {
       return {
         ...r,
-        ownsLegendary: true,
-        ownedRarity: "Legendary",
+        ownsTarget: true,
+        ownedRarity,
         acquisitionOptions: [],
         cheapestOption: null,
         cheapestCostRON: null,
+        // backward compat
+        ownsLegendary: ownedRarity === "Legendary",
       };
     }
 
     const prices = priceMap.get(r.championTokenId) ?? { Basic: null, Rare: null, Epic: null, Legendary: null };
-    const options = calculateAcquisitionOptions(prices);
+    const options = calculateAcquisitionOptions(prices, targetRarity);
     const availableOptions = options.filter((o) => o.available && o.totalCostRON !== null);
     const cheapestOption = availableOptions.length > 0
       ? availableOptions.reduce((best, o) =>
@@ -378,18 +441,21 @@ export async function getLegendaryAdvisory(
 
     return {
       ...r,
-      ownsLegendary: false,
+      ownsTarget: false,
       ownedRarity,
       acquisitionOptions: options,
       cheapestOption,
       cheapestCostRON: cheapestOption?.totalCostRON ?? null,
+      // backward compat
+      ownsLegendary: false,
     };
   });
 
   return {
     schemeName,
+    targetRarity,
     topChampions,
-    totalLegendariesOwned,
+    totalTargetOwned,
     fetchedAt: new Date().toISOString(),
   };
 }

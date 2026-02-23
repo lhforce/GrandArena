@@ -550,10 +550,11 @@ export const matchupRouter = router({
     .input(z.object({
       schemeName: z.string(),
       topN: z.number().min(1).max(20).default(10),
+      targetRarity: z.enum(["Rare", "Epic", "Legendary"]).default("Legendary"),
     }))
     .query(async ({ input, ctx }) => {
       const userId = ctx.user.id;
-      return getLegendaryAdvisory(input.schemeName, userId, input.topN);
+      return getLegendaryAdvisory(input.schemeName, userId, input.topN, input.targetRarity);
     }),
 
   // ─── Opponent Crusher ──────────────────────────────────────────────

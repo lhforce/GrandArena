@@ -150,7 +150,7 @@ Respond in this exact JSON format:
 
 Important:
 - Match each image to the CLOSEST champion/scheme from the database
-- The rarity can be determined by the card border color: grey=Basic, blue=Rare, purple=Epic, gold/orange=Legendary, pink=FA/Series
+- The rarity can be determined by the card border color: grey=Basic, green=Rare, purple=Epic, pink/gold=Legendary
 - If you cannot identify a card, use "Unknown" as the name with low confidence
 - Confidence should be 0.0-1.0 based on how sure you are of the match`
     },

@@ -1,9 +1,14 @@
 /**
- * Legendary Card Acquisition Advisor
+ * Card Crafter — Multi-rarity Acquisition Advisor
  *
  * Ranks top MOKIs for a selected scheme by avg score → win rate,
- * checks Legendary ownership, shows marketplace prices and crafting costs,
- * and highlights the cheapest acquisition path.
+ * checks ownership at the target rarity, shows marketplace prices
+ * and crafting costs, and highlights the cheapest acquisition path.
+ *
+ * Crafting ratios:
+ *   3 Basic  → 1 Rare
+ *   10 Rare  → 1 Epic
+ *   8 Epic   → 1 Legendary
  */
 import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
@@ -87,6 +92,26 @@ const SCHEMES = [
   "Whale Watching",
 ];
 
+type TargetRarity = "Rare" | "Epic" | "Legendary";
+
+const CRAFTING_RECIPES: Record<TargetRarity, string> = {
+  Rare: "3 Basics → 1 Rare",
+  Epic: "10 Rares → 1 Epic",
+  Legendary: "8 Epics → 1 Legendary",
+};
+
+const CRAFTING_FOOTNOTES: Record<TargetRarity, string> = {
+  Rare: "3 Basics → 1 Rare",
+  Epic: "10 Rares / 30 Basics → 1 Epic",
+  Legendary: "8 Epics / 80 Rares / 240 Basics → 1 Legendary",
+};
+
+const RARITY_ICON_COLOR: Record<TargetRarity, string> = {
+  Rare: "text-rarity-rare",
+  Epic: "text-rarity-epic",
+  Legendary: "text-rarity-legendary",
+};
+
 // ─── Rarity styling ─────────────────────────────────────────────────
 const RARITY_COLORS: Record<string, string> = {
   Basic: "text-rarity-basic",
@@ -112,7 +137,6 @@ function formatPct(rate: number): string {
 }
 
 function marketplaceUrl(name: string): string {
-  const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
   return `https://marketplace.roninchain.com/collections/grand-arena?search=${encodeURIComponent(name)}`;
 }
 
@@ -125,7 +149,7 @@ type AcquisitionOption = {
   available: boolean;
 };
 
-type AdvisorEntry = {
+type CrafterEntry = {
   rank: number;
   championTokenId: string;
   name: string;
@@ -135,7 +159,7 @@ type AdvisorEntry = {
   avgBalls: number;
   avgWartDistance: number;
   totalMatches: number;
-  ownsLegendary: boolean;
+  ownsTarget: boolean;
   ownedRarity: string | null;
   acquisitionOptions: AcquisitionOption[];
   cheapestOption: AcquisitionOption | null;
@@ -151,12 +175,12 @@ function RankBadge({ rank }: { rank: number }) {
   return <span className="text-muted-foreground font-mono text-sm">#{rank}</span>;
 }
 
-function OwnershipBadge({ entry }: { entry: AdvisorEntry }) {
-  if (entry.ownsLegendary) {
+function OwnershipBadge({ entry, targetRarity }: { entry: CrafterEntry; targetRarity: TargetRarity }) {
+  if (entry.ownsTarget) {
     return (
-      <Badge className="bg-rarity-legendary/20 text-rarity-legendary border-rarity-legendary/40 gap-1">
+      <Badge className={`${RARITY_BG[targetRarity] ?? ""} gap-1 ${RARITY_COLORS[targetRarity] ?? ""}`}>
         <Crown className="w-3 h-3" />
-        Legendary ✓
+        {targetRarity} ✓
       </Badge>
     );
   }
@@ -178,12 +202,12 @@ function OwnershipBadge({ entry }: { entry: AdvisorEntry }) {
   );
 }
 
-function CheapestPathCell({ entry }: { entry: AdvisorEntry }) {
-  if (entry.ownsLegendary) {
+function CheapestPathCell({ entry, targetRarity }: { entry: CrafterEntry; targetRarity: TargetRarity }) {
+  if (entry.ownsTarget) {
     return (
-      <div className="flex items-center gap-1 text-rarity-legendary text-sm font-medium">
+      <div className={`flex items-center gap-1 ${RARITY_COLORS[targetRarity]} text-sm font-medium`}>
         <Crown className="w-4 h-4" />
-        Already Legendary
+        Already {targetRarity}
       </div>
     );
   }
@@ -191,7 +215,7 @@ function CheapestPathCell({ entry }: { entry: AdvisorEntry }) {
     return <span className="text-muted-foreground text-sm">No prices available</span>;
   }
   const opt = entry.cheapestOption;
-  const isDirectBuy = opt.method === "buy_legendary";
+  const isDirectBuy = opt.method.startsWith("buy_");
   return (
     <div className="flex flex-col gap-0.5">
       <div className="flex items-center gap-1.5">
@@ -209,12 +233,12 @@ function CheapestPathCell({ entry }: { entry: AdvisorEntry }) {
   );
 }
 
-function AcquisitionOptionsPanel({ entry }: { entry: AdvisorEntry }) {
-  if (entry.ownsLegendary) {
+function AcquisitionOptionsPanel({ entry, targetRarity }: { entry: CrafterEntry; targetRarity: TargetRarity }) {
+  if (entry.ownsTarget) {
     return (
-      <div className="p-3 rounded-lg bg-rarity-legendary/10 border border-rarity-legendary/30 text-sm text-rarity-legendary flex items-center gap-2">
+      <div className={`p-3 rounded-lg ${RARITY_BG[targetRarity]?.replace("/20", "/10").replace("/40", "/30") ?? "bg-muted/10"} text-sm ${RARITY_COLORS[targetRarity]} flex items-center gap-2`}>
         <Crown className="w-4 h-4 shrink-0" />
-        You already own a Legendary version of this champion. No action needed.
+        You already own a {targetRarity} version of this champion. No action needed.
       </div>
     );
   }
@@ -239,7 +263,6 @@ function AcquisitionOptionsPanel({ entry }: { entry: AdvisorEntry }) {
     );
   }
 
-  // Sort by cost ascending
   const sorted = [...available].sort(
     (a, b) => (a.totalCostRON ?? Infinity) - (b.totalCostRON ?? Infinity)
   );
@@ -258,7 +281,7 @@ function AcquisitionOptionsPanel({ entry }: { entry: AdvisorEntry }) {
             }`}
           >
             <div className="flex items-center gap-2">
-              {opt.method === "buy_legendary" ? (
+              {opt.method.startsWith("buy_") ? (
                 <ShoppingCart className="w-3.5 h-3.5 text-blue-400 shrink-0" />
               ) : (
                 <Hammer className="w-3.5 h-3.5 text-amber-400 shrink-0" />
@@ -274,7 +297,7 @@ function AcquisitionOptionsPanel({ entry }: { entry: AdvisorEntry }) {
               <span className={`font-semibold ${isCheapest ? "text-gold" : ""}`}>
                 {formatRON(opt.totalCostRON)}
               </span>
-              {opt.method === "buy_legendary" && (
+              {opt.method.startsWith("buy_") && (
                 <a
                   href={marketplaceUrl(entry.name)}
                   target="_blank"
@@ -301,25 +324,25 @@ function ChampionRow({
   entry,
   expanded,
   onToggle,
+  targetRarity,
 }: {
-  entry: AdvisorEntry;
+  entry: CrafterEntry;
   expanded: boolean;
   onToggle: () => void;
+  targetRarity: TargetRarity;
 }) {
   return (
     <>
       <TableRow
         className={`cursor-pointer hover:bg-muted/30 transition-colors ${
-          entry.ownsLegendary ? "bg-rarity-legendary/5" : ""
+          entry.ownsTarget ? `${RARITY_BG[targetRarity]?.split(" ")[0]?.replace("/20", "/5") ?? ""}` : ""
         }`}
         onClick={onToggle}
       >
-        {/* Rank */}
         <TableCell className="w-12 text-center">
           <RankBadge rank={entry.rank} />
         </TableCell>
 
-        {/* Champion name */}
         <TableCell>
           <div className="flex flex-col gap-0.5">
             <span className="font-medium text-sm">{entry.name}</span>
@@ -329,48 +352,41 @@ function ChampionRow({
           </div>
         </TableCell>
 
-        {/* Avg Score */}
         <TableCell className="text-right">
           <span className="font-mono text-sm font-semibold text-gold">
-            {entry.avgScore.toFixed(0)}
+            {entry.avgScore.toFixed(1)}
           </span>
         </TableCell>
 
-        {/* Win Rate */}
         <TableCell className="text-right">
           <span className="font-mono text-sm">
             {formatPct(entry.winRate)}
           </span>
         </TableCell>
 
-        {/* Stats */}
         <TableCell className="hidden md:table-cell text-right">
           <span className="text-xs text-muted-foreground font-mono">
             {entry.avgKills.toFixed(1)}K / {entry.avgBalls.toFixed(1)}B / {entry.avgWartDistance.toFixed(0)}W
           </span>
         </TableCell>
 
-        {/* Ownership */}
         <TableCell className="hidden sm:table-cell">
-          <OwnershipBadge entry={entry} />
+          <OwnershipBadge entry={entry} targetRarity={targetRarity} />
         </TableCell>
 
-        {/* Cheapest path */}
         <TableCell>
-          <CheapestPathCell entry={entry} />
+          <CheapestPathCell entry={entry} targetRarity={targetRarity} />
         </TableCell>
 
-        {/* Expand indicator */}
         <TableCell className="w-8 text-center text-muted-foreground text-xs">
           {expanded ? "▲" : "▼"}
         </TableCell>
       </TableRow>
 
-      {/* Expanded acquisition options */}
       {expanded && (
         <TableRow className="hover:bg-transparent">
           <TableCell colSpan={8} className="py-2 px-4 bg-muted/10">
-            <AcquisitionOptionsPanel entry={entry} />
+            <AcquisitionOptionsPanel entry={entry} targetRarity={targetRarity} />
           </TableCell>
         </TableRow>
       )}
@@ -379,17 +395,18 @@ function ChampionRow({
 }
 
 // ─── Main Page ───────────────────────────────────────────────────────
-export default function LegendaryAdvisor() {
+export default function CardCrafter() {
   const { isAuthenticated, user } = useAuth();
   const [selectedScheme, setSelectedScheme] = useState<string>("");
   const [topN, setTopN] = useState<number>(10);
+  const [targetRarity, setTargetRarity] = useState<TargetRarity>("Legendary");
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   const advisoryQuery = trpc.matchup.getLegendaryAdvisory.useQuery(
-    { schemeName: selectedScheme, topN },
+    { schemeName: selectedScheme, topN, targetRarity },
     {
       enabled: isAuthenticated && selectedScheme.length > 0,
-      staleTime: 5 * 60 * 1000, // 5 minutes
+      staleTime: 5 * 60 * 1000,
     }
   );
 
@@ -408,8 +425,8 @@ export default function LegendaryAdvisor() {
   // Summary stats
   const summary = useMemo(() => {
     if (!data?.topChampions?.length) return null;
-    const owned = data.topChampions.filter((c) => c.ownsLegendary).length;
-    const needAcquire = data.topChampions.filter((c) => !c.ownsLegendary);
+    const owned = data.topChampions.filter((c) => c.ownsTarget).length;
+    const needAcquire = data.topChampions.filter((c) => !c.ownsTarget);
     const withPrices = needAcquire.filter((c) => c.cheapestCostRON != null);
     const totalCost = withPrices.reduce((sum, c) => sum + (c.cheapestCostRON ?? 0), 0);
     return { owned, needAcquire: needAcquire.length, withPrices: withPrices.length, totalCost };
@@ -419,10 +436,10 @@ export default function LegendaryAdvisor() {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center space-y-4">
-          <Crown className="w-12 h-12 text-rarity-legendary mx-auto" />
-          <h2 className="text-xl font-semibold">Sign in to use the Legendary Advisor</h2>
+          <Hammer className="w-12 h-12 text-gold mx-auto" />
+          <h2 className="text-xl font-semibold">Sign in to use the Card Crafter</h2>
           <p className="text-muted-foreground text-sm">
-            This tool checks your wallet inventory and recommends the most economical path to Legendary cards.
+            This tool checks your wallet inventory and recommends the most economical path to craft or buy cards at any rarity.
           </p>
           <Button
             onClick={() => { window.location.href = getLoginUrl(); }}
@@ -441,16 +458,26 @@ export default function LegendaryAdvisor() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold font-[Rajdhani] flex items-center gap-2">
-            <Crown className="w-6 h-6 text-rarity-legendary" />
-            Legendary Advisor
+            <Hammer className="w-6 h-6 text-gold" />
+            Card Crafter
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Find the most economical path to Legendary cards for top-performing MOKIs
+            Find the cheapest way to buy or craft cards at any rarity for top-performing MOKIs
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Sparkles className="w-3.5 h-3.5 text-gold" />
-          <span>Crafting: 8 Epics → 1 Legendary (free)</span>
+        <div className="flex flex-col items-end gap-1 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-rarity-rare" />
+            <span>3 Basic → 1 Rare</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-rarity-epic" />
+            <span>10 Rare → 1 Epic</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-rarity-legendary" />
+            <span>8 Epic → 1 Legendary</span>
+          </div>
         </div>
       </div>
 
@@ -472,6 +499,37 @@ export default function LegendaryAdvisor() {
                       {s}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Target Rarity
+              </label>
+              <Select value={targetRarity} onValueChange={(v) => setTargetRarity(v as TargetRarity)}>
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Rare">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-rarity-rare" />
+                      Rare
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="Epic">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-rarity-epic" />
+                      Epic
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="Legendary">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-rarity-legendary" />
+                      Legendary
+                    </span>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -522,7 +580,7 @@ export default function LegendaryAdvisor() {
       {advisoryQuery.isError && (
         <Card className="border-destructive/40 bg-destructive/10">
           <CardContent className="pt-4 text-sm text-destructive">
-            Failed to load advisory data: {advisoryQuery.error.message}
+            Failed to load data: {advisoryQuery.error.message}
           </CardContent>
         </Card>
       )}
@@ -547,12 +605,12 @@ export default function LegendaryAdvisor() {
                 </CardContent>
               </Card>
 
-              <Card className="border-rarity-legendary/30 bg-rarity-legendary/5">
+              <Card className={`${RARITY_BG[targetRarity]?.replace("/20", "/5").replace("/40", "/30") ?? ""}`}>
                 <CardContent className="pt-4 pb-4">
                   <div className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
-                    Legendaries Owned
+                    {targetRarity} Owned
                   </div>
-                  <div className="text-2xl font-bold font-mono text-rarity-legendary">
+                  <div className={`text-2xl font-bold font-mono ${RARITY_COLORS[targetRarity]}`}>
                     {summary.owned}
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">
@@ -612,6 +670,9 @@ export default function LegendaryAdvisor() {
                   <TrendingUp className="w-4 h-4 text-gold" />
                   Top MOKIs for{" "}
                   <span className="text-gold">{data.schemeName}</span>
+                  <span className={`text-xs ${RARITY_COLORS[targetRarity]}`}>
+                    ({targetRarity})
+                  </span>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Info className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
@@ -655,6 +716,7 @@ export default function LegendaryAdvisor() {
                           entry={entry}
                           expanded={expandedRows.has(entry.championTokenId)}
                           onToggle={() => toggleRow(entry.championTokenId)}
+                          targetRarity={targetRarity}
                         />
                       ))}
                     </TableBody>
@@ -673,11 +735,11 @@ export default function LegendaryAdvisor() {
               </div>
               <div className="flex items-center gap-1.5">
                 <Hammer className="w-3.5 h-3.5 text-amber-400" />
-                Craft from lower rarity (8 Epics / 80 Rares / 240 Basics)
+                Craft from lower rarity ({CRAFTING_FOOTNOTES[targetRarity]})
               </div>
               <div className="flex items-center gap-1.5">
-                <Crown className="w-3.5 h-3.5 text-rarity-legendary" />
-                Already own Legendary
+                <Crown className={`w-3.5 h-3.5 ${RARITY_ICON_COLOR[targetRarity]}`} />
+                Already own {targetRarity}
               </div>
               <div className="ml-auto">
                 Data fetched: {new Date(data.fetchedAt).toLocaleTimeString()}

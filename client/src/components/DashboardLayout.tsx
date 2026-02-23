@@ -52,7 +52,7 @@ const menuItems = [
   { icon: Target, label: "Opponent Crusher", path: "/opponent-crusher" },
   { icon: TrendingUp, label: "Meta Report", path: "/meta-report" },
   { icon: Search, label: "Champion Deep Dive", path: "/champion-deep-dive" },
-  { icon: Crown, label: "Legendary Advisor", path: "/legendary-advisor" },
+  { icon: Crown, label: "Card Crafter", path: "/card-crafter" },
   { icon: Bot, label: "Telegram Alerts", path: "/telegram-alerts" },
   { icon: Settings, label: "Settings", path: "/settings" },
 ];
