@@ -13,7 +13,7 @@ import { getBulkHeadToHead, getBulkMatchPerformance } from "./matchupAnalytics";
 import { getDb } from "./db";
 import { userCards } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
-import { loadGameDataLookup } from "./swapAdvisor";
+import { loadGameDataLookup } from "./gameDataUtils";
 
 // ─── Types ─────────────────────────────────────────────────────────
 

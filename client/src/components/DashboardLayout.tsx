@@ -32,8 +32,6 @@ import {
   Settings,
   BarChart3,
   Sparkles,
-  Crosshair,
-  ArrowRightLeft,
   Target,
   TrendingUp,
   Search,
@@ -55,8 +53,6 @@ const menuItems = [
   { icon: TrendingUp, label: "Meta Report", path: "/meta-report" },
   { icon: Search, label: "Champion Deep Dive", path: "/champion-deep-dive" },
   { icon: Crown, label: "Legendary Advisor", path: "/legendary-advisor" },
-  { icon: Crosshair, label: "Matchup Intel", path: "/matchup-intel" },
-  { icon: ArrowRightLeft, label: "Swap Advisor", path: "/swap-advisor" },
   { icon: Bot, label: "Telegram Alerts", path: "/telegram-alerts" },
   { icon: Settings, label: "Settings", path: "/settings" },
 ];

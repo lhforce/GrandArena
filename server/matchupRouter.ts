@@ -31,10 +31,9 @@ import {
   getMatchDataSummary,
 } from "./matchupAnalytics";
 import {
-  analyzeMatchupsAndRecommendSwaps,
   loadGameDataLookup,
   getUserBenchChampions,
-} from "./swapAdvisor";
+} from "./gameDataUtils";
 import {
   analyzeContestPrep,
   getUserMokisForPrep,
@@ -220,59 +219,7 @@ export const matchupRouter = router({
     return getMatchDataSummary();
   }),
 
-  // ─── Swap Advisor ──────────────────────────────────────────────────
-
-  /**
-   * Analyze current matchups and recommend swaps.
-   * Input: your 4 champion IDs, opponent 4 champion IDs, optional bench IDs.
-   * If no bench IDs provided and user is logged in, uses their full inventory.
-   */
-  analyzeSwaps: publicProcedure
-    .input(
-      z.object({
-        slots: z.array(
-          z.object({
-            championTokenId: z.number(),
-            opponents: z.array(z.number()).min(1).max(10),
-          })
-        ).min(1).max(4),
-        benchChampionIds: z.array(z.number()).optional(),
-      })
-    )
-    .mutation(async ({ input, ctx }) => {
-      const gameData = await loadGameDataLookup();
-
-      // If no bench provided and user is logged in, get their full inventory
-      const yourIds = input.slots.map((s) => s.championTokenId);
-      let benchIds = input.benchChampionIds ?? [];
-      if (benchIds.length === 0 && ctx.user) {
-        benchIds = await getUserBenchChampions(ctx.user.id, yourIds);
-      }
-
-      const result = await analyzeMatchupsAndRecommendSwaps(
-        input.slots,
-        benchIds,
-        gameData
-      );
-
-      return result;
-    }),
-
-  /**
-   * Quick H2H lookup for a single matchup pair (used by swap advisor UI).
-   */
-  quickH2h: publicProcedure
-    .input(
-      z.object({
-        championId: z.number(),
-        opponentId: z.number(),
-      })
-    )
-    .query(async ({ input }) => {
-      return getHeadToHead(input.championId, input.opponentId);
-    }),
-
-  // ─── Contest-Based Swap Advisor (Auto-Populate) ─────────────────────
+  // ─── Contest Entries & Opponents ──────────────────────────────────
 
   /**
    * Get contests where the user has saved lineups (for contest picker).
@@ -443,118 +390,6 @@ export const matchupRouter = router({
       });
 
       return { opponents, total: opponents.length };
-    }),
-
-  /**
-   * One-click swap analysis: given a saved lineup ID and an opponent entry,
-   * auto-populate everything and return swap recommendations.
-   */
-  analyzeContestSwaps: protectedProcedure
-    .input(
-      z.object({
-        lineupId: z.number(),
-        // 4 slots, each with up to 5 opponent championTokenIds
-        opponentSlots: z.array(
-          z.object({
-            opponents: z.array(z.number()).min(1).max(10),
-          })
-        ).min(1).max(4),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("Database not available");
-
-      // Get the user's saved lineup
-      const [lineup] = await db
-        .select()
-        .from(savedLineups)
-        .where(
-          and(
-            eq(savedLineups.id, input.lineupId),
-            eq(savedLineups.userId, ctx.user.id)
-          )
-        )
-        .limit(1);
-
-      if (!lineup) throw new Error("Lineup not found");
-
-      // Resolve NFT tokenIds to championTokenIds via user_cards
-      const nftIds = [
-        lineup.champion1TokenId,
-        lineup.champion2TokenId,
-        lineup.champion3TokenId,
-        lineup.champion4TokenId,
-      ].filter(Boolean) as string[];
-
-      const cards = await db
-        .select({ tokenId: userCards.tokenId, championTokenId: userCards.championTokenId })
-        .from(userCards)
-        .where(inArray(userCards.tokenId, nftIds));
-
-      const nftToChampId = new Map<string, number>();
-      for (const card of cards) {
-        if (card.championTokenId) {
-          nftToChampId.set(card.tokenId, Number(card.championTokenId));
-        }
-      }
-
-      const gameData = await loadGameDataLookup();
-
-      // Resolve each lineup slot: try user_cards first, then game data
-      const yourChampionIds: number[] = [];
-      for (const nftId of nftIds) {
-        const champId = nftToChampId.get(nftId);
-        if (champId && !isNaN(champId)) {
-          yourChampionIds.push(champId);
-        } else {
-          const asNum = Number(nftId);
-          if (!isNaN(asNum) && gameData.has(asNum)) {
-            yourChampionIds.push(asNum);
-          }
-        }
-      }
-
-      if (yourChampionIds.length !== 4) {
-        throw new Error(
-          `Could not resolve all 4 champions. Found ${yourChampionIds.length} of 4. ` +
-          `Make sure your cards are synced in My Cards.`
-        );
-      }
-
-      // Build slots with opponents
-      const slots = yourChampionIds.map((champId, idx) => ({
-        championTokenId: champId,
-        opponents: input.opponentSlots[idx]?.opponents ?? [],
-      }));
-
-      // Get user's full bench (all owned MOKIs minus the ones in this lineup)
-      const benchIds = await getUserBenchChampions(ctx.user.id, yourChampionIds);
-
-      const result = await analyzeMatchupsAndRecommendSwaps(
-        slots,
-        benchIds,
-        gameData
-      );
-
-      // Get contest info for context
-      let contestName = "";
-      if (lineup.contestId) {
-        const [contest] = await db
-          .select({ name: contests.name })
-          .from(contests)
-          .where(eq(contests.id, lineup.contestId))
-          .limit(1);
-        contestName = contest?.name ?? "";
-      }
-
-      return {
-        ...result,
-        lineupId: lineup.id,
-        contestId: lineup.contestId,
-        contestName,
-        entryNumber: lineup.entryNumber,
-      };
     }),
 
   // ─── Contest Prep (Proactive Opponent Scouting) ────────────────────

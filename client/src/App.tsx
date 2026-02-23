@@ -17,8 +17,6 @@ import OpponentCrusher from "@/pages/OpponentCrusher";
 import MetaReport from "@/pages/MetaReport";
 import ChampionDeepDive from "@/pages/ChampionDeepDive";
 import LegendaryAdvisor from "@/pages/LegendaryAdvisor";
-import MatchupIntel from "@/pages/MatchupIntel";
-import SwapAdvisor from "@/pages/SwapAdvisor";
 
 function Router() {
   return (
@@ -35,8 +33,6 @@ function Router() {
         <Route path="/champion-deep-dive" component={ChampionDeepDive} />
         <Route path="/legendary-advisor" component={LegendaryAdvisor} />
         <Route path="/telegram-alerts" component={TelegramAlerts} />
-        <Route path="/matchup-intel" component={MatchupIntel} />
-        <Route path="/swap-advisor" component={SwapAdvisor} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
       </Switch>

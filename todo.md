@@ -318,3 +318,8 @@
 ## Bug Fixes Round 13
 - [x] Fix lineup builder: Hard exclude non-qualifying champions from trait scheme lineups (Golden Shower must only contain Gold Fur MOKIs)
 - [x] Restore missing pages: Opponent Crusher, Meta Report, Champion Deep Dive, Legendary Advisor — sidebar nav + routes + working backend procedures
+
+## Cleanup: Remove Matchup Intel and Swap Advisor
+- [x] Remove Matchup Intel page, route, sidebar nav, backend router, and test file
+- [x] Remove Swap Advisor page, route, sidebar nav, backend router, and test file
+- [x] Ensure no remaining references to MatchupIntel or SwapAdvisor anywhere in codebase
