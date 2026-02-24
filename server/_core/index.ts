@@ -79,4 +79,11 @@ startServer().then(() => {
   }).catch((err) => {
     console.error("[Cron] Failed to start match scrape cron:", err);
   });
+
+  // Start the hourly arbitrage scan cron job
+  import("../arbitrageCron").then(({ startArbitrageCron }) => {
+    startArbitrageCron();
+  }).catch((err) => {
+    console.error("[Cron] Failed to start arbitrage cron:", err);
+  });
 }).catch(console.error);

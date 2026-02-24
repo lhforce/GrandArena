@@ -36,6 +36,7 @@ import {
   TrendingUp,
   Search,
   Crown,
+  CircleDollarSign,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -53,6 +54,7 @@ const menuItems = [
   { icon: TrendingUp, label: "Meta Report", path: "/meta-report" },
   { icon: Search, label: "Champion Deep Dive", path: "/champion-deep-dive" },
   { icon: Crown, label: "Card Crafter", path: "/card-crafter" },
+  { icon: CircleDollarSign, label: "Card Arbitrage", path: "/card-arbitrage" },
   { icon: Bot, label: "Telegram Alerts", path: "/telegram-alerts" },
   { icon: Settings, label: "Settings", path: "/settings" },
 ];

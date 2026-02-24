@@ -7,6 +7,7 @@ import { lineupRouter } from "./lineupRouter";
 import { statsRouter } from "./statsRouter";
 import { telegramRouter } from "./telegramRouter";
 import { matchupRouter } from "./matchupRouter";
+import { arbitrageRouter } from "./arbitrageRouter";
 import { z } from "zod";
 
 const GRAPHQL_URL = 'https://marketplace-graphql.skymavis.com/graphql';
@@ -49,6 +50,9 @@ export const appRouter = router({
 
   // Matchup intelligence routes
   matchup: matchupRouter,
+
+  // Card Arbitrage routes
+  arbitrage: arbitrageRouter,
 
   /**
    * Proxy: Fetch all Grand Arena MOKI cards owned by a wallet address

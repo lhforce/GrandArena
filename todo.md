@@ -390,3 +390,25 @@
 ## Card Crafter — Show Crafting Info for All Rarities
 - [x] Show crafting breakdown (marketplace price, craft-from-lower cost) for every rarity level, even if the user already owns the card
 - [x] Remove ownership-based filtering from the crafting info display — CheapestPathCell and AcquisitionOptionsPanel now always show full cost breakdown
+
+## Card Arbitrage Feature Integration (Profit-Focused)
+- [x] Update arbitrage_opportunities schema with sellPriceUsd, profitUsd, profitPercent, hotSignal fields
+- [x] Build Ronin Marketplace GraphQL client (floor prices per champion per rarity, exchange rates RON/WETH→USD)
+- [x] Build outlier detection: listings >3x median are flagged and excluded from all price calculations
+- [x] Display "X buyable / Y total listings" with outlier prices crossed out
+- [x] Build hot card signal detection (price acceleration, cold-to-hot, crafting demand, volume spikes)
+- [x] Build profit calculator: craft-up cost vs selling price at target rarity → profit margin
+- [x] Add tRPC procedures (getArbitrageOpportunities, getFloorPrices, triggerArbitrageScan)
+- [x] Add hourly cron job to scan marketplace, detect hot cards, calculate profit opportunities
+- [x] Build Card Arbitrage page: hot cards table with profit margins, sorted by profit %
+- [ ] Integrate live marketplace floor prices into Card Crafter
+- [x] Add Telegram alerts when profitable craft-up opportunities detected (>20% profit margin)
+
+## Supply Squeeze Detection
+- [x] Detect low-supply cards (≤5-10 listings at a given rarity)
+- [x] Calculate total buyout cost to corner available supply
+- [x] Estimate relist price (markup based on reduced supply / demand signals)
+- [x] Show potential profit from supply squeeze (buyout cost vs relist revenue)
+- [x] Flag as "Supply Squeeze" opportunities alongside crafting arbitrage
+- [x] Add Supply Squeeze section to Card Arbitrage page
+- [x] Add Telegram alerts for supply squeeze opportunities

@@ -308,3 +308,89 @@ export const matchScrapeProgress = mysqlTable("match_scrape_progress", {
 
 export type MatchScrapeProgress = typeof matchScrapeProgress.$inferSelect;
 export type InsertMatchScrapeProgress = typeof matchScrapeProgress.$inferInsert;
+
+// ─── Marketplace Floor Prices (from Ronin Marketplace GraphQL) ──────
+export const marketplacePrices = mysqlTable("marketplace_prices", {
+  id: int("id").autoincrement().primaryKey(),
+  championName: varchar("championName", { length: 128 }).notNull(),
+  rarity: varchar("rarity", { length: 32 }).notNull(), // Basic, Rare, Epic, Legendary, Scheme
+  floorPriceRon: decimal("floorPriceRon", { precision: 18, scale: 8 }), // Lowest buyable (after outlier removal)
+  floorPriceUsd: decimal("floorPriceUsd", { precision: 12, scale: 4 }),
+  medianPriceRon: decimal("medianPriceRon", { precision: 18, scale: 8 }), // Median of buyable listings
+  buyoutCostRon: decimal("buyoutCostRon", { precision: 18, scale: 8 }), // Sum of all buyable listings
+  buyoutCostUsd: decimal("buyoutCostUsd", { precision: 12, scale: 4 }),
+  paymentToken: varchar("paymentToken", { length: 10 }).default("RON"), // RON or WETH
+  buyableListings: int("buyableListings").default(0), // After outlier removal
+  totalListings: int("totalListings").default(0), // Including outliers
+  outlierCount: int("outlierCount").default(0), // Listings >3x median
+  allPricesJson: text("allPricesJson"), // JSON array of all listing prices with outlier flags
+  fetchedAt: timestamp("fetchedAt").defaultNow().notNull(),
+}, (table) => [
+  index("idx_mp_champion").on(table.championName),
+  index("idx_mp_rarity").on(table.rarity),
+  index("idx_mp_fetched").on(table.fetchedAt),
+  uniqueIndex("idx_mp_champ_rarity").on(table.championName, table.rarity),
+]);
+
+export type MarketplacePrice = typeof marketplacePrices.$inferSelect;
+export type InsertMarketplacePrice = typeof marketplacePrices.$inferInsert;
+
+// ─── Marketplace Price History (hourly snapshots) ───────────────────
+export const marketplacePriceHistory = mysqlTable("marketplace_price_history", {
+  id: int("id").autoincrement().primaryKey(),
+  championName: varchar("championName", { length: 128 }).notNull(),
+  rarity: varchar("rarity", { length: 32 }).notNull(),
+  floorPriceRon: decimal("floorPriceRon", { precision: 18, scale: 8 }),
+  floorPriceUsd: decimal("floorPriceUsd", { precision: 12, scale: 4 }),
+  snapshotAt: timestamp("snapshotAt").defaultNow().notNull(),
+}, (table) => [
+  index("idx_mph_champion").on(table.championName, table.rarity),
+  index("idx_mph_snapshot").on(table.snapshotAt),
+]);
+
+export type MarketplacePriceHistory = typeof marketplacePriceHistory.$inferSelect;
+export type InsertMarketplacePriceHistory = typeof marketplacePriceHistory.$inferInsert;
+
+// ─── Arbitrage Opportunities (profit-focused: craft low → sell high) ─
+export const arbitrageOpportunities = mysqlTable("arbitrage_opportunities", {
+  id: int("id").autoincrement().primaryKey(),
+  championName: varchar("championName", { length: 128 }).notNull(),
+  targetRarity: varchar("targetRarity", { length: 32 }).notNull(), // Rare, Epic, Legendary
+  // Craft-up cost (buy lower rarity cards and craft)
+  sourceRarity: varchar("sourceRarity", { length: 32 }), // Basic, Rare, or Epic
+  sourceFloorUsd: decimal("sourceFloorUsd", { precision: 12, scale: 4 }), // Floor price of source rarity
+  cardsNeeded: int("cardsNeeded"), // 3 (Basic→Rare), 10 (Rare→Epic), 8 (Epic→Legendary)
+  totalCraftCostUsd: decimal("totalCraftCostUsd", { precision: 12, scale: 4 }), // cardsNeeded × sourceFloorUsd
+  // Selling price at target rarity
+  sellPriceUsd: decimal("sellPriceUsd", { precision: 12, scale: 4 }), // Floor/avg selling price at target rarity
+  // Profit calculation
+  profitUsd: decimal("profitUsd", { precision: 12, scale: 4 }), // sellPrice - craftCost
+  profitPercent: decimal("profitPercent", { precision: 8, scale: 2 }), // (profit / craftCost) × 100
+  // Hot card signals
+  hotSignal: varchar("hotSignal", { length: 256 }), // e.g. "Price acceleration +30%, Volume up 200%"
+  hotScore: int("hotScore").default(0), // Composite score: higher = hotter card
+  // Listing details
+  buyableListings: int("buyableListings").default(0), // Listings after outlier removal
+  totalListings: int("totalListings").default(0), // All listings including outliers
+  calculatedAt: timestamp("calculatedAt").defaultNow().notNull(),
+}, (table) => [
+  index("idx_arb_champion").on(table.championName),
+  index("idx_arb_target").on(table.targetRarity),
+  index("idx_arb_profit").on(table.profitPercent),
+  index("idx_arb_hot").on(table.hotScore),
+  uniqueIndex("idx_arb_champ_rarity").on(table.championName, table.targetRarity),
+]);
+
+export type ArbitrageOpportunity = typeof arbitrageOpportunities.$inferSelect;
+export type InsertArbitrageOpportunity = typeof arbitrageOpportunities.$inferInsert;
+
+// ─── Exchange Rates Cache (RON/WETH to USD) ─────────────────────────
+export const exchangeRates = mysqlTable("exchange_rates", {
+  id: int("id").autoincrement().primaryKey(),
+  token: varchar("token", { length: 10 }).notNull().unique(), // RON, WETH
+  usdRate: decimal("usdRate", { precision: 18, scale: 8 }).notNull(),
+  lastUpdatedAt: timestamp("lastUpdatedAt").defaultNow().notNull(),
+});
+
+export type ExchangeRate = typeof exchangeRates.$inferSelect;
+export type InsertExchangeRate = typeof exchangeRates.$inferInsert;
