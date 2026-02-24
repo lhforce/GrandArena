@@ -478,3 +478,7 @@
 - [x] Calculate confidence score per lineup based on data source breakdown (match history %, empirical %, model %)
 - [x] Show confidence badge on each entry (High/Medium/Low) with tooltip showing data source breakdown
 - [x] Replace the current "0% confidence" placeholder with real calculated confidence
+
+## Bug Fixes Round 13
+- [x] Fix rarity label display bug: My Cards view shows "Legendary" text instead of actual owned card rarities
+- [x] Best Possible view should clearly indicate cards are hypothetical Legendary versions (e.g., badge/note)

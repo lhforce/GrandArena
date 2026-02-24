@@ -58,7 +58,7 @@ export default function LineupBuilder() {
   const buildBoxRef = useRef<HTMLDivElement>(null);
   const lineupsRef = useRef<HTMLDivElement>(null);
 
-  const getEntryMode = (entryNum: number) => entryMode[entryNum] ?? 'best';
+  const getEntryMode = (entryNum: number) => entryMode[entryNum] ?? 'myCards';
   const toggleEntryMode = (entryNum: number) => {
     setEntryMode(prev => ({
       ...prev,
@@ -493,10 +493,29 @@ export default function LineupBuilder() {
               <CardContent className="px-3 sm:px-6">
                 <div className="grid grid-cols-5 gap-1.5 sm:gap-3">
                   {/* Champion Cards with Artwork — uses imageUrl from optimizer (rarity-specific) */}
+                  {/* Best Possible mode: hypothetical Legendary banner */}
+                  {mode === 'best' && (
+                    <div className="col-span-5 mb-1 flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 rounded-md px-2 py-1">
+                      <Trophy className="w-3 h-3 text-amber-400 shrink-0" />
+                      <span className="text-[9px] sm:text-[10px] text-amber-300">
+                        <strong>Hypothetical lineup</strong> — showing best possible champions at Legendary rarity. Switch to <strong>My Cards</strong> to see your actual owned cards.
+                      </span>
+                    </div>
+                  )}
                   {activeLineup.champions.map((slot: any, ci: number) => {
                     const imgUrl = slot.champion.imageUrl;
+                    // In Best Possible mode, rarity is forced to Legendary by the backend.
+                    // In My Cards mode, rarity is the actual owned card rarity.
+                    const displayRarity = slot.champion.rarity;
+                    const isHypothetical = mode === 'best';
                     return (
-                      <div key={ci} className={`rounded-lg border ${RARITY_BORDER[slot.champion.rarity] ?? "border-border"} bg-card/50 overflow-hidden text-center`}>
+                      <div key={ci} className={`rounded-lg border ${RARITY_BORDER[displayRarity] ?? "border-border"} bg-card/50 overflow-hidden text-center relative`}>
+                        {/* Hypothetical overlay badge */}
+                        {isHypothetical && (
+                          <div className="absolute top-0.5 left-0.5 z-10">
+                            <span className="text-[6px] bg-amber-500/80 text-black font-bold px-0.5 py-px rounded leading-none">IDEAL</span>
+                          </div>
+                        )}
                         {/* Card Image */}
                         <div className="aspect-[3/4] relative bg-background/30">
                           {imgUrl ? (
@@ -508,7 +527,7 @@ export default function LineupBuilder() {
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">
-                              <Swords className={`w-6 h-6 sm:w-8 sm:h-8 ${RARITY_COLORS[slot.champion.rarity] ?? "text-muted-foreground"}`} />
+                              <Swords className={`w-6 h-6 sm:w-8 sm:h-8 ${RARITY_COLORS[displayRarity] ?? "text-muted-foreground"}`} />
                             </div>
                           )}
                           {/* Score overlay */}
@@ -523,8 +542,8 @@ export default function LineupBuilder() {
                           <div className="text-[8px] sm:text-[10px] font-medium truncate" title={slot.champion.name}>
                             {slot.champion.name}
                           </div>
-                          <Badge variant="outline" className={`text-[7px] sm:text-[9px] h-3.5 sm:h-4 mt-0.5 ${RARITY_COLORS[slot.champion.rarity] ?? ""}`}>
-                            {slot.champion.rarity}
+                          <Badge variant="outline" className={`text-[7px] sm:text-[9px] h-3.5 sm:h-4 mt-0.5 ${RARITY_COLORS[displayRarity] ?? ""}`}>
+                            {isHypothetical ? "Legendary ✦" : displayRarity}
                           </Badge>
                         </div>
                       </div>
