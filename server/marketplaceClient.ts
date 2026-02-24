@@ -281,7 +281,7 @@ export async function fetchSaleHistory(
       activities(
         tokenAddress: "${GA_CARDS_CONTRACT}",
         activityTypes: [Sale],
-        size: 50
+        size: 30
       ) {
         results {
           id
