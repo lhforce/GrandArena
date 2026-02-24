@@ -418,3 +418,8 @@
 - [x] Update exchange rate source to use CoinGecko or hardcoded fallback with correct rate
 - [x] Retrigger arbitrage scan with corrected rate
 - [x] Verify recalculated USD prices on Card Arbitrage page
+
+## Bug Fix: Ronin Marketplace Links
+- [x] Verify correct Ronin Marketplace URL format for Grand Arena card listings
+- [x] Fix marketplace link generation in Card Arbitrage page
+- [x] Fix marketplace link generation in Card Crafter page

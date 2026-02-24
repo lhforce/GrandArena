@@ -87,8 +87,9 @@ export default function CardArbitrage() {
     return "text-red-400";
   };
 
+  const GA_CONTRACT = '0x9e8ed4ff354bd11602255b3d8e1ed13a1bb26b4b';
   const marketplaceUrl = (name: string, rarity: string) =>
-    `https://marketplace.skymavis.com/collections/grand-arena-cards?search=${encodeURIComponent(name)}&rarity=${rarity}`;
+    `https://marketplace.roninchain.com/collections/${GA_CONTRACT}?Rarity=${encodeURIComponent(rarity)}&search=${encodeURIComponent(name.toLowerCase())}`;
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-[1400px]">

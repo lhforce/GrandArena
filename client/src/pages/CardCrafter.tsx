@@ -139,8 +139,9 @@ function formatPct(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`;
 }
 
+const GA_CONTRACT = '0x9e8ed4ff354bd11602255b3d8e1ed13a1bb26b4b';
 function marketplaceUrl(name: string): string {
-  return `https://marketplace.roninchain.com/collections/grand-arena?search=${encodeURIComponent(name)}`;
+  return `https://marketplace.roninchain.com/collections/${GA_CONTRACT}?search=${encodeURIComponent(name.toLowerCase())}`;
 }
 
 type AcquisitionOption = {
