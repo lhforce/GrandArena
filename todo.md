@@ -486,3 +486,12 @@
 - [x] Add imageUrl column to marketplace_prices table and populate it during price scraping
 - [x] Use marketplace_prices Legendary imageUrl in Best Possible lineup backend response
 - [x] Frontend: display correct Legendary artwork in Best Possible view (backend now serves correct images)
+
+## Optimizer Rewrite (Critical Bug Fixes)
+- [ ] Rewrite scoreChampion: base score (winRate*400 + avgKills*100 + avgBalls*80 + avgWart*0.5) with smaller scheme boosts
+- [ ] Lower rarity multipliers: Legendary 2.2×, Epic 1.8×, Rare 1.4×, Basic 1.0×
+- [ ] Add confidence scoring based on match count (5 matches=0.5, 20 matches=0.9)
+- [ ] Apply confidence multiplier in topPercent contests
+- [ ] Increase partial trait lineup penalty from 0.8× to 0.65×
+- [ ] Add contest-type adjustments (topPercent favors consistency, winnerTakeAll favors ceiling)
+- [ ] Run all tests and verify optimizer produces better lineups

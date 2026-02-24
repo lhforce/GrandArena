@@ -125,15 +125,15 @@ export interface OptimizerResult {
 
 // ─── Rarity Scoring Multipliers ───────────────────────────────────
 // These multipliers represent the performance advantage of higher-rarity cards.
-// Legendaries are significantly better than Basics — the multiplier gap must be
-// large enough to ensure Legendaries are always preferred in OPEN contests,
-// even when a Basic has slightly better match history stats.
+// Reduced from original (3.0→2.2, 2.2→1.8, 1.6→1.4) to prevent Legendary cards
+// with poor win rates from dominating. A Legendary with 30% win rate should not
+// beat a Basic with 80% win rate just due to rarity.
 const RARITY_MULTIPLIER: Record<string, number> = {
   Basic: 1.0,
   Common: 1.0,
-  Rare: 1.6,
-  Epic: 2.2,
-  Legendary: 3.0,
+  Rare: 1.4,
+  Epic: 1.8,
+  Legendary: 2.2,
 };
 
 const RARITY_RANK: Record<string, number> = {
@@ -387,12 +387,12 @@ export function filterByRarity(
  *
  * Step 6 of the pipeline: rank MOKIs by win% (primary) + scheme-matched secondary stats.
  *
- * Scoring formula:
- * - Win rate is the PRIMARY factor (highest weight). A MOKI that wins more matches
- *   scores more points regardless of scheme.
- * - Secondary stat is scheme-specific:
- *   kills → avgKills, balls → avgBalls, wart → avgWartDistance, etc.
- * - Rarity multiplier applied on top (higher rarity = better base stats generally).
+ * Rebalanced scoring (v2):
+ * - Base score: winRate*400 + avgKills*100 + avgBalls*80 + avgWart*0.5
+ *   Win rate is heavily weighted (400) but secondary stats matter (100–80).
+ * - Scheme boosts are now percentage-based (+40–50%) instead of absolute weights.
+ *   This prevents scheme fit from overriding raw champion strength.
+ * - Rarity multiplier applied on top (reduced: Legendary 2.2× instead of 3.0×).
  *
  * Hard exclusions:
  * - Trait schemes: non-qualifying MOKIs return -Infinity (never picked).
@@ -410,9 +410,11 @@ export function scoreChampion(
   const avgWart = champion.avgWartDistance ?? 50;
   const winRate = champion.winRate ?? 0.3;
 
-  // No scheme: balanced base score
+  // Base score: balanced across all stats
+  const baseScore = (winRate * 400 + avgKills * 100 + avgBalls * 80 + avgWart * 0.5) * multiplier;
+
+  // No scheme: return base score
   if (!scheme) {
-    const baseScore = (winRate * 300 + avgKills * 70 + avgBalls * 30 + avgWart * 0.3) * multiplier;
     return Math.round(baseScore);
   }
 
@@ -424,60 +426,57 @@ export function scoreChampion(
 
   // ── Trait Schemes ─────────────────────────────────────────────────
   // Trait bonus (+25 per qualifying MOKI per match) is added at lineup level.
-  // Here we just rank qualifying MOKIs by win% + general performance.
+  // Here we just rank qualifying MOKIs by base score.
   // Non-qualifying MOKIs are hard-excluded.
   if (cat === "trait") {
     if (!qualifies) return -Infinity;
-    // Qualifying MOKIs get their full base score (same formula as no-scheme).
-    // The trait bonus (+25/match × 5 matches = +125 per qualifier) is applied at the
-    // LINEUP level in the co-optimization loop, not per-MOKI here.
-    // This ensures the test `traitScore === baseScore` holds for qualifying MOKIs.
-    const score = (winRate * 300 + avgKills * 70 + avgBalls * 30 + avgWart * 0.3) * multiplier;
-    return Math.round(score);
+    // Qualifying MOKIs get their base score (no scheme boost for traits).
+    // The trait bonus is applied at the LINEUP level, not per-MOKI.
+    return Math.round(baseScore);
   }
 
   // Hard exclusion for trait-filtered schemes
   if (!qualifies) return -Infinity;
 
-  let schemeScore = 0;
+  // Scheme boosts: percentage-based instead of absolute weights
+  // This ensures scheme fit enhances but doesn't override raw strength
+  let boostFactor = 1.0;
 
   switch (cat) {
     case "kills":
-      // Win% primary, kills secondary — kills are what this scheme rewards
-      schemeScore = (winRate * 300 + avgKills * 250 + avgBalls * 10 + avgWart * 0.1) * multiplier;
+      // Kills scheme: +40% boost (was 250 weight, now 40% of base)
+      boostFactor = 1.4;
       break;
     case "balls":
-      // Win% primary, balls secondary
-      schemeScore = (winRate * 300 + avgBalls * 200 + avgKills * 15 + avgWart * 0.1) * multiplier;
+      // Balls scheme: +35% boost
+      boostFactor = 1.35;
       break;
     case "wart":
-      // Win% primary, wart distance secondary
-      schemeScore = (winRate * 300 + avgWart * 2.5 + avgKills * 15 + avgBalls * 10) * multiplier;
+      // Wart scheme: +30% boost
+      boostFactor = 1.3;
       break;
     case "win":
-      // Win rate is BOTH primary and secondary — winning is the entire point
-      schemeScore = (winRate * 600 + avgKills * 30 + avgBalls * 15 + avgWart * 0.2) * multiplier;
+      // Win scheme: +50% boost (win rate is already heavily weighted in base)
+      boostFactor = 1.5;
       break;
     case "combo":
-      // Cage Match: +35/kill, +10/ball → kills are far more valuable than balls
-      // Win% primary, kills strongly secondary, balls tertiary
-      // Using 350:50 ratio (7:1) to ensure pure ball carriers (MahoShojo-type) are not picked
-      schemeScore = (winRate * 300 + avgKills * 350 + avgBalls * 50 + avgWart * 0.1) * multiplier;
+      // Combo (Cage Match): +45% boost
+      boostFactor = 1.45;
       break;
     case "rarity":
-      // Rarity schemes: diverse rarities matter (handled at lineup level).
-      // Rank by win% + general performance as tiebreaker.
-      schemeScore = (winRate * 300 + avgKills * 70 + avgBalls * 30 + avgWart * 0.3) * multiplier;
+      // Rarity schemes: no boost (handled at lineup level)
+      boostFactor = 1.0;
       break;
     case "conditional":
-      // Conditional schemes: win% primary, balanced secondary
-      schemeScore = (winRate * 400 + avgKills * 80 + avgBalls * 30 + avgWart * 0.3) * multiplier;
+      // Conditional schemes: +25% boost (risky, so lower boost)
+      boostFactor = 1.25;
       break;
     default:
-      schemeScore = (winRate * 300 + avgKills * 80 + avgBalls * 30 + avgWart * 0.3) * multiplier;
+      boostFactor = 1.0;
       break;
   }
 
+  const schemeScore = baseScore * boostFactor;
   return Math.round(schemeScore);
 }
 
