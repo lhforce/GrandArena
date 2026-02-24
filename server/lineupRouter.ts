@@ -354,6 +354,53 @@ export const lineupRouter = router({
         console.error("[Optimizer] Failed to load all champions from game-data.json, falling back to owned cards:", err);
         allGameChampions = userCardsToChampionCards(available.mokis);
       }
+
+      // ── Force correct rarity on candidate pool based on contest rules ──
+      // game-data.json has one entry per champion at its "base" rarity (mostly Basic/Rare).
+      // The optimizer needs all champions at the CORRECT rarity for the contest:
+      //   OPEN → force ALL to Legendary (always the best option, no restriction)
+      //   EPIC_ONLY → force ALL to Epic
+      //   RARE_ONLY → force ALL to Rare
+      //   COMMON_ONLY → force ALL to Basic
+      //   LEGENDARY_ONLY → force ALL to Legendary
+      //   ONE_OF_EACH → expand each champion into 4 variants (Basic, Rare, Epic, Legendary)
+      //   NO_LEGENDARY → force ALL to Epic (best non-Legendary rarity)
+      //   BASIC_OR_RARE → force ALL to Rare (best of the two)
+      const rarityRestriction = contest.rarityRestriction ?? "OPEN";
+      const RARITY_FORCE_MAP: Record<string, string> = {
+        OPEN: "Legendary",
+        COMMON_ONLY: "Basic",
+        RARE_ONLY: "Rare",
+        EPIC_ONLY: "Epic",
+        LEGENDARY_ONLY: "Legendary",
+        NO_LEGENDARY: "Epic",
+        BASIC_OR_RARE: "Rare",
+      };
+
+      if (rarityRestriction === "ONE_OF_EACH") {
+        // Expand each champion into 4 rarity variants for one-of-each selection
+        const rarities = ["Basic", "Rare", "Epic", "Legendary"];
+        const expanded: ChampionCard[] = [];
+        for (const champ of allGameChampions) {
+          for (const rarity of rarities) {
+            expanded.push({
+              ...champ,
+              tokenId: `${champ.championTokenId}-${rarity}`,
+              rarity,
+            });
+          }
+        }
+        allGameChampions = expanded;
+        console.log(`[Optimizer] ONE_OF_EACH: expanded to ${allGameChampions.length} champion variants (${allGameChampions.length / 4} champions × 4 rarities)`);
+      } else {
+        const forcedRarity = RARITY_FORCE_MAP[rarityRestriction] ?? "Legendary";
+        allGameChampions = allGameChampions.map((ch) => ({
+          ...ch,
+          rarity: forcedRarity,
+        }));
+        console.log(`[Optimizer] ${rarityRestriction}: forced all ${allGameChampions.length} champions to ${forcedRarity} rarity`);
+      }
+
       const result = optimizeLineups({
         ownedMokis: userCardsToChampionCards(available.mokis),
         allMokis: allGameChampions.length > 0 ? allGameChampions : userCardsToChampionCards(available.mokis),

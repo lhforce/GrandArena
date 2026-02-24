@@ -455,3 +455,9 @@
 - [x] Fix all champion cards showing "Unknown" name in Winning Lineups (reset 367 failed entries for re-identification)
 - [x] Add owned/need-to-buy indicator to cards in Winning Lineups (already existed, was hidden when identifiedChampions was empty)
 - [x] Fix formatting inconsistencies in Winning Lineups card display (handle unidentified cards with 'Pending ID' label)
+
+## Lineup Builder: Force Correct Rarity on Candidate Pool
+- [x] OPEN contests: force all champions to Legendary rarity (always best option)
+- [x] Rarity-restricted contests (Epic Only, Rare Only, etc.): force all champions to that rarity
+- [x] ONE_OF_EACH contests: generate all 4 rarity variants per champion so one-of-each builder can pick one from each tier
+- [x] All 184 tests passing after rarity forcing changes
