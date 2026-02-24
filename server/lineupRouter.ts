@@ -301,7 +301,10 @@ export const lineupRouter = router({
 
       // Detect short-match contests (Half Day = ~10 matches per MOKI)
       // Performance schemes suffer in short matches due to insufficient RNG samples
-      const isShortMatch = /half\s*day/i.test(contestNameLower) || /one[- ]?round/i.test(contestNameLower);
+      const { isShortMatchContest } = await import("./lineupOptimizer");
+      const isShortMatch = isShortMatchContest(contest.name ?? "");
+
+      console.log(`[Optimizer DEBUG] Contest: "${contest.name}" | contestType: ${contestType} | isShortMatch: ${isShortMatch} | rarityRestriction: ${contest.rarityRestriction}`);
 
       const contestRules: ContestRules = {
         rarityRestriction: contest.rarityRestriction ?? "OPEN",

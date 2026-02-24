@@ -117,6 +117,17 @@ const RARITY_RANK: Record<string, number> = {
 };
 
 // ─── Scheme Categorization ─────────────────────────────────────────
+
+/**
+ * Detect whether a contest name indicates a short-match format (Half-Day, One-Round, etc.).
+ * Short-match contests have fewer matches per MOKI, so performance schemes suffer from RNG variance.
+ * Handles: "Half Day", "Half-Day", "Halfday", "One-Round", "One Round", etc.
+ */
+export function isShortMatchContest(contestName: string): boolean {
+  const lower = contestName.toLowerCase();
+  return /half[\s-]*day/i.test(lower) || /one[- ]?round/i.test(lower);
+}
+
 export function categorizeScheme(description: string, hasTraitFilter?: boolean): SchemeCategory {
   const d = description.toLowerCase();
 

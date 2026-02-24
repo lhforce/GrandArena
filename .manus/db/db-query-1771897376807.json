@@ -1,0 +1,40 @@
+{
+  "query": "SELECT id, name, format FROM contests WHERE name LIKE '%Yaki%' LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute SELECT id, name, format FROM contests WHERE name LIKE '%Yaki%' LIMIT 10;",
+  "rows": [
+    {
+      "id": "150032",
+      "name": "Free No Legendary Yaki Yokai",
+      "format": "FREE_ENTRY"
+    },
+    {
+      "id": "180024",
+      "name": "50/50 Open Daily Trap Yaki",
+      "format": "FIFTY_FIFTY"
+    },
+    {
+      "id": "180028",
+      "name": "50/50 Rare Only Half-Day Emblem Yaki",
+      "format": "FIFTY_FIFTY"
+    },
+    {
+      "id": "240028",
+      "name": "50/50 Open Daily Artifact Yaki",
+      "format": "FIFTY_FIFTY"
+    },
+    {
+      "id": "240030",
+      "name": "Top 20% Epic Only Half-Day Yaki Syndicate",
+      "format": "TOP_20_PCT"
+    },
+    {
+      "id": "240035",
+      "name": "Top 20% 2R+2E Daily Sora Yaki",
+      "format": "TOP_20_PCT"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\tformat\n150032\tFree No Legendary Yaki Yokai\tFREE_ENTRY\n180024\t50/50 Open Daily Trap Yaki\tFIFTY_FIFTY\n180028\t50/50 Rare Only Half-Day Emblem Yaki\tFIFTY_FIFTY\n240028\t50/50 Open Daily Artifact Yaki\tFIFTY_FIFTY\n240030\tTop 20% Epic Only Half-Day Yaki Syndicate\tTOP_20_PCT\n240035\tTop 20% 2R+2E Daily Sora Yaki\tTOP_20_PCT\n",
+  "stderr": "",
+  "execution_time_ms": 60
+}

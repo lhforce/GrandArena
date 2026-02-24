@@ -11,6 +11,7 @@ import {
   categorizeScheme,
   classifySchemeRisk,
   getSchemeRiskMultiplier,
+  isShortMatchContest,
   type ChampionCard,
   type SchemeCardData,
   type ContestRules,
@@ -1348,5 +1349,25 @@ describe("All-champions candidate pool", () => {
     expect(selectedNames).toContain("StrongD");
     expect(selectedNames).not.toContain("WeakA");
     expect(selectedNames).not.toContain("WeakB");
+  });
+});
+
+describe("isShortMatchContest", () => {
+  it("detects 'Half-Day' with hyphen (the real GA API format)", () => {
+    expect(isShortMatchContest("Top 20% Epic Only Half-Day Yaki Syndicate")).toBe(true);
+  });
+  it("detects 'Half Day' with space", () => {
+    expect(isShortMatchContest("Top 20% Half Day Contest")).toBe(true);
+  });
+  it("detects 'Halfday' with no separator", () => {
+    expect(isShortMatchContest("Halfday Tournament")).toBe(true);
+  });
+  it("detects 'HALF-DAY' uppercase", () => {
+    expect(isShortMatchContest("HALF-DAY EPIC ONLY")).toBe(true);
+  });
+  it("returns false for regular contests", () => {
+    expect(isShortMatchContest("Top 20% Epic Only Yaki Syndicate")).toBe(false);
+    expect(isShortMatchContest("Legendary Only Cage Match")).toBe(false);
+    expect(isShortMatchContest("Top 10% Open")).toBe(false);
   });
 });
