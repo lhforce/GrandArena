@@ -401,7 +401,9 @@ export const lineupRouter = router({
         console.log(`[Optimizer] ${rarityRestriction}: forced all ${allGameChampions.length} champions to ${forcedRarity} rarity`);
       }
 
-      const result = optimizeLineups({
+      // ── Run optimizer TWICE: owned cards + best possible ──
+      // 1. "Best Possible" — uses all 180 champions (forced to correct rarity)
+      const bestPossibleResult = optimizeLineups({
         ownedMokis: userCardsToChampionCards(available.mokis),
         allMokis: allGameChampions.length > 0 ? allGameChampions : userCardsToChampionCards(available.mokis),
         ownedSchemes: schemeCards,
@@ -414,8 +416,62 @@ export const lineupRouter = router({
         schemeEmpirical,
       });
 
+      // 2. "My Cards" — uses only the user's owned cards
+      // Also force rarity on owned cards for consistency
+      let ownedMokisForOptimizer = userCardsToChampionCards(available.mokis);
+      // Note: owned cards already have their REAL rarity from the blockchain,
+      // so we do NOT force rarity on them — the user's actual card rarities matter.
+      const myCardsResult = optimizeLineups({
+        ownedMokis: ownedMokisForOptimizer,
+        allMokis: ownedMokisForOptimizer,
+        ownedSchemes: schemeCards,
+        allSchemes: schemeCards,
+        contestRules,
+        numEntries: input.numEntries,
+        entryFee: contest.entryFee ?? 0,
+        dailyBudget: remainingBudget,
+        performanceStats: performanceStats.size > 0 ? performanceStats : undefined,
+        schemeEmpirical,
+      });
+
+      // Use bestPossibleResult as the primary result (backward compatible)
+      const result = bestPossibleResult;
+
+      // Compute per-lineup confidence from data source quality
+      const computeLineupConfidence = (lineup: any) => {
+        const champIds = lineup.champions.map((c: any) => c.champion.championTokenId).filter(Boolean);
+        let totalConf = 0;
+        const sources: Record<string, number> = { model: 0, empirical: 0, match_history: 0 };
+        for (const cid of champIds) {
+          const meta = blendMetadata[cid];
+          if (!meta) { sources.model++; continue; }
+          // Score each data source tier
+          if (meta.matchHistoryMatches >= 50) { totalConf += 95; sources.match_history++; }
+          else if (meta.matchHistoryMatches >= 10) { totalConf += 70; sources.match_history++; }
+          else if (meta.dataSource.includes('empirical') && meta.appearances >= 20) { totalConf += 55; sources.empirical++; }
+          else if (meta.dataSource.includes('empirical')) { totalConf += 35; sources.empirical++; }
+          else { totalConf += 15; sources.model++; }
+        }
+        const score = champIds.length > 0 ? Math.round(totalConf / champIds.length) : 0;
+        const label = score >= 75 ? 'High' : score >= 45 ? 'Medium' : 'Low';
+        return { score, label, sources };
+      };
+
+      const lineupsWithConfidence = result.lineups.map((l: any) => ({
+        ...l,
+        confidence: computeLineupConfidence(l),
+      }));
+      const myCardsLineupsWithConfidence = myCardsResult.lineups.map((l: any) => ({
+        ...l,
+        confidence: computeLineupConfidence(l),
+      }));
+
       return {
         ...result,
+        lineups: lineupsWithConfidence,
+        // Include both lineup sets for the toggle UI
+        myCardsLineups: myCardsLineupsWithConfidence,
+        myCardsWarnings: myCardsResult.warnings,
         contestName: contest.name,
         contestFormat: contest.format,
         rarityRestriction: contest.rarityRestriction,

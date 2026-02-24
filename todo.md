@@ -461,3 +461,20 @@
 - [x] Rarity-restricted contests (Epic Only, Rare Only, etc.): force all champions to that rarity
 - [x] ONE_OF_EACH contests: generate all 4 rarity variants per champion so one-of-each builder can pick one from each tier
 - [x] All 184 tests passing after rarity forcing changes
+
+## Feature: Dual Lineup Recommendation (My Cards vs Best Possible)
+- [x] Update optimizer to run twice per entry: once with owned cards only, once with all 180 champions
+- [x] Update tRPC optimize procedure to return both lineups per entry
+- [x] Add toggle button (My Cards / Best Possible) to the right of each Entry # header in Lineup Builder UI
+- [x] Show owned-cards lineup by default, toggle to best-possible on click
+- [x] Visual distinction between the two modes (e.g., different border color or badge)
+
+## Feature: Live Marketplace Floor Prices in Card Crafter
+- [x] Add tRPC procedure to fetch live floor prices from marketplace for Card Crafter
+- [x] Show RON + USD floor price per champion per rarity in Card Crafter table
+- [x] Compare crafting cost vs marketplace buy price to show which is cheaper
+
+## Feature: Confidence Indicator per Lineup
+- [x] Calculate confidence score per lineup based on data source breakdown (match history %, empirical %, model %)
+- [x] Show confidence badge on each entry (High/Medium/Low) with tooltip showing data source breakdown
+- [x] Replace the current "0% confidence" placeholder with real calculated confidence

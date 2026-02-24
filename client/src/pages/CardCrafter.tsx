@@ -135,6 +135,11 @@ function formatRON(ron: number | null | undefined): string {
   return `${ron.toFixed(2)} RON`;
 }
 
+function formatUSD(usd: number | null | undefined): string {
+  if (usd == null || usd === 0) return "";
+  return `$${usd.toFixed(2)}`;
+}
+
 function formatPct(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`;
 }
@@ -148,6 +153,7 @@ type AcquisitionOption = {
   method: string;
   label: string;
   totalCostRON: number | null;
+  totalCostUSD: number | null;
   cardsNeeded: number;
   unitPrice: number | null;
   available: boolean;
@@ -168,6 +174,7 @@ type CrafterEntry = {
   acquisitionOptions: AcquisitionOption[];
   cheapestOption: AcquisitionOption | null;
   cheapestCostRON: number | null;
+  cheapestCostUSD: number | null;
 };
 
 // ─── Sub-components ─────────────────────────────────────────────────
@@ -220,6 +227,7 @@ function CheapestPathCell({ entry, targetRarity }: { entry: CrafterEntry; target
   }
   const opt = entry.cheapestOption;
   const isDirectBuy = opt.method.startsWith("buy_");
+  const usdStr = formatUSD(opt.totalCostUSD);
   return (
     <div className="flex flex-col gap-0.5">
       <div className="flex items-center gap-1.5">
@@ -231,6 +239,9 @@ function CheapestPathCell({ entry, targetRarity }: { entry: CrafterEntry; target
         <span className="text-sm font-semibold text-foreground">
           {formatRON(opt.totalCostRON)}
         </span>
+        {usdStr && (
+          <span className="text-xs text-muted-foreground">({usdStr})</span>
+        )}
       </div>
       <span className="text-xs text-muted-foreground">{opt.label}</span>
     </div>
@@ -292,6 +303,11 @@ function AcquisitionOptionsPanel({ entry, targetRarity }: { entry: CrafterEntry;
               <span className={`font-semibold ${isCheapest ? "text-gold" : ""}`}>
                 {formatRON(opt.totalCostRON)}
               </span>
+              {formatUSD(opt.totalCostUSD) && (
+                <span className="text-xs text-muted-foreground">
+                  ({formatUSD(opt.totalCostUSD)})
+                </span>
+              )}
               {opt.method.startsWith("buy_") && (
                 <a
                   href={marketplaceUrl(entry.name)}
@@ -506,7 +522,8 @@ export default function CardCrafter() {
     const needAcquire = data.topChampions.filter((c) => !c.ownsTarget);
     const withPrices = needAcquire.filter((c) => c.cheapestCostRON != null);
     const totalCost = withPrices.reduce((sum, c) => sum + (c.cheapestCostRON ?? 0), 0);
-    return { owned, needAcquire: needAcquire.length, withPrices: withPrices.length, totalCost };
+    const totalCostUSD = withPrices.reduce((sum, c) => sum + (c.cheapestCostUSD ?? 0), 0);
+    return { owned, needAcquire: needAcquire.length, withPrices: withPrices.length, totalCost, totalCostUSD };
   }, [data]);
 
   if (!isAuthenticated) {
@@ -813,6 +830,9 @@ export default function CardCrafter() {
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">
                     RON (cheapest paths)
+                    {summary.totalCostUSD > 0 && (
+                      <span className="ml-1">≈ ${summary.totalCostUSD.toFixed(2)} USD</span>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -911,8 +931,11 @@ export default function CardCrafter() {
                 <Crown className={`w-3.5 h-3.5 ${RARITY_ICON_COLOR[targetRarity]}`} />
                 Already own {targetRarity}
               </div>
-              <div className="ml-auto">
-                Data fetched: {new Date(data.fetchedAt).toLocaleTimeString()}
+              <div className="ml-auto flex flex-col items-end gap-0.5">
+                <span>Data fetched: {new Date(data.fetchedAt).toLocaleTimeString()}</span>
+                {(data as any).ronUsd > 0 && (
+                  <span>1 RON ≈ ${((data as any).ronUsd as number).toFixed(4)} USD</span>
+                )}
               </div>
             </div>
           )}

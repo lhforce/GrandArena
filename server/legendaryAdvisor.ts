@@ -15,6 +15,7 @@
 import { getDb } from "./db";
 import { matchPlayerStats, matchHistory, userCards } from "../drizzle/schema";
 import { eq, and, gte, sql } from "drizzle-orm";
+import { getExchangeRates } from "./marketplaceClient";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -57,6 +58,7 @@ interface AcquisitionOption {
   method: string;
   label: string;
   totalCostRON: number | null;
+  totalCostUSD: number | null;
   cardsNeeded: number;
   unitPrice: number | null;
   available: boolean;
@@ -77,6 +79,7 @@ export interface CardCrafterEntry {
   acquisitionOptions: AcquisitionOption[];
   cheapestOption: AcquisitionOption | null;
   cheapestCostRON: number | null;
+  cheapestCostUSD: number | null;
 }
 
 export interface CardCrafterResult {
@@ -85,6 +88,7 @@ export interface CardCrafterResult {
   topChampions: CardCrafterEntry[];
   totalTargetOwned: number;
   fetchedAt: string;
+  ronUsd: number; // RON→USD exchange rate at time of fetch
 }
 
 // Keep backward compat aliases
@@ -155,7 +159,7 @@ async function fetchFloorPrices(championName: string): Promise<PriceData> {
 
 // ─── Acquisition Cost Calculator ─────────────────────────────────────
 
-function calculateAcquisitionOptions(prices: PriceData, targetRarity: TargetRarity): AcquisitionOption[] {
+function calculateAcquisitionOptions(prices: PriceData, targetRarity: TargetRarity, ronUsd: number = 0): AcquisitionOption[] {
   const options: AcquisitionOption[] = [];
 
   if (targetRarity === "Rare") {
@@ -164,6 +168,7 @@ function calculateAcquisitionOptions(prices: PriceData, targetRarity: TargetRari
       method: "buy_rare",
       label: "Buy Rare directly",
       totalCostRON: prices.Rare,
+      totalCostUSD: prices.Rare != null ? Math.round(prices.Rare * ronUsd * 100) / 100 : null,
       cardsNeeded: 1,
       unitPrice: prices.Rare,
       available: prices.Rare !== null,
@@ -175,6 +180,7 @@ function calculateAcquisitionOptions(prices: PriceData, targetRarity: TargetRari
       method: "craft_from_basic",
       label: `Buy ${BASICS_PER_RARE} Basics → craft Rare`,
       totalCostRON: craftFromBasicCost,
+      totalCostUSD: craftFromBasicCost != null ? Math.round(craftFromBasicCost * ronUsd * 100) / 100 : null,
       cardsNeeded: BASICS_PER_RARE,
       unitPrice: prices.Basic,
       available: prices.Basic !== null,
@@ -185,6 +191,7 @@ function calculateAcquisitionOptions(prices: PriceData, targetRarity: TargetRari
       method: "buy_epic",
       label: "Buy Epic directly",
       totalCostRON: prices.Epic,
+      totalCostUSD: prices.Epic != null ? Math.round(prices.Epic * ronUsd * 100) / 100 : null,
       cardsNeeded: 1,
       unitPrice: prices.Epic,
       available: prices.Epic !== null,
@@ -196,6 +203,7 @@ function calculateAcquisitionOptions(prices: PriceData, targetRarity: TargetRari
       method: "craft_from_rare",
       label: `Buy ${RARES_PER_EPIC} Rares → craft Epic`,
       totalCostRON: craftFromRareCost,
+      totalCostUSD: craftFromRareCost != null ? Math.round(craftFromRareCost * ronUsd * 100) / 100 : null,
       cardsNeeded: RARES_PER_EPIC,
       unitPrice: prices.Rare,
       available: prices.Rare !== null,
@@ -207,6 +215,7 @@ function calculateAcquisitionOptions(prices: PriceData, targetRarity: TargetRari
       method: "craft_from_basic",
       label: `Buy ${BASICS_FOR_EPIC} Basics → craft to Epic`,
       totalCostRON: craftFromBasicCost,
+      totalCostUSD: craftFromBasicCost != null ? Math.round(craftFromBasicCost * ronUsd * 100) / 100 : null,
       cardsNeeded: BASICS_FOR_EPIC,
       unitPrice: prices.Basic,
       available: prices.Basic !== null,
@@ -218,6 +227,7 @@ function calculateAcquisitionOptions(prices: PriceData, targetRarity: TargetRari
       method: "buy_legendary",
       label: "Buy Legendary directly",
       totalCostRON: prices.Legendary,
+      totalCostUSD: prices.Legendary != null ? Math.round(prices.Legendary * ronUsd * 100) / 100 : null,
       cardsNeeded: 1,
       unitPrice: prices.Legendary,
       available: prices.Legendary !== null,
@@ -229,6 +239,7 @@ function calculateAcquisitionOptions(prices: PriceData, targetRarity: TargetRari
       method: "craft_from_epic",
       label: `Buy ${EPICS_PER_LEGENDARY} Epics → craft Legendary`,
       totalCostRON: craftFromEpicCost,
+      totalCostUSD: craftFromEpicCost != null ? Math.round(craftFromEpicCost * ronUsd * 100) / 100 : null,
       cardsNeeded: EPICS_PER_LEGENDARY,
       unitPrice: prices.Epic,
       available: prices.Epic !== null,
@@ -240,6 +251,7 @@ function calculateAcquisitionOptions(prices: PriceData, targetRarity: TargetRari
       method: "craft_from_rare",
       label: `Buy ${RARES_FOR_LEGENDARY} Rares → craft to Legendary`,
       totalCostRON: craftFromRareCost,
+      totalCostUSD: craftFromRareCost != null ? Math.round(craftFromRareCost * ronUsd * 100) / 100 : null,
       cardsNeeded: RARES_FOR_LEGENDARY,
       unitPrice: prices.Rare,
       available: prices.Rare !== null,
@@ -251,6 +263,7 @@ function calculateAcquisitionOptions(prices: PriceData, targetRarity: TargetRari
       method: "craft_from_basic",
       label: `Buy ${BASICS_FOR_LEGENDARY} Basics → craft to Legendary`,
       totalCostRON: craftFromBasicCost,
+      totalCostUSD: craftFromBasicCost != null ? Math.round(craftFromBasicCost * ronUsd * 100) / 100 : null,
       cardsNeeded: BASICS_FOR_LEGENDARY,
       unitPrice: prices.Basic,
       available: prices.Basic !== null,
@@ -350,6 +363,15 @@ export async function getLegendaryAdvisory(
   // 1. Rank champions for this scheme
   const rankings = await rankChampionsForScheme(schemeName, topN);
 
+  // Fetch exchange rate for USD conversion
+  let ronUsd = 0;
+  try {
+    const rates = await getExchangeRates();
+    ronUsd = rates.ronUsd;
+  } catch {
+    // fallback: no USD conversion
+  }
+
   if (rankings.length === 0) {
     return {
       schemeName,
@@ -357,6 +379,7 @@ export async function getLegendaryAdvisory(
       topChampions: [],
       totalTargetOwned: 0,
       fetchedAt: new Date().toISOString(),
+      ronUsd,
     };
   }
 
@@ -425,13 +448,14 @@ export async function getLegendaryAdvisory(
         acquisitionOptions: [],
         cheapestOption: null,
         cheapestCostRON: null,
+        cheapestCostUSD: null,
         // backward compat
         ownsLegendary: ownedRarity === "Legendary",
       };
     }
 
     const prices = priceMap.get(r.championTokenId) ?? { Basic: null, Rare: null, Epic: null, Legendary: null };
-    const options = calculateAcquisitionOptions(prices, targetRarity);
+    const options = calculateAcquisitionOptions(prices, targetRarity, ronUsd);
     const availableOptions = options.filter((o) => o.available && o.totalCostRON !== null);
     const cheapestOption = availableOptions.length > 0
       ? availableOptions.reduce((best, o) =>
@@ -446,6 +470,7 @@ export async function getLegendaryAdvisory(
       acquisitionOptions: options,
       cheapestOption,
       cheapestCostRON: cheapestOption?.totalCostRON ?? null,
+      cheapestCostUSD: cheapestOption?.totalCostUSD ?? null,
       // backward compat
       ownsLegendary: false,
     };
@@ -457,6 +482,7 @@ export async function getLegendaryAdvisory(
     topChampions,
     totalTargetOwned,
     fetchedAt: new Date().toISOString(),
+    ronUsd,
   };
 }
 
@@ -495,6 +521,15 @@ export async function getChampionAdvisoryByName(
     )
     .groupBy(matchPlayerStats.championTokenId);
 
+  // Fetch exchange rate for USD conversion
+  let ronUsd = 0;
+  try {
+    const rates = await getExchangeRates();
+    ronUsd = rates.ronUsd;
+  } catch {
+    // fallback: no USD conversion
+  }
+
   if (rows.length === 0) {
     return {
       schemeName: championName,
@@ -502,6 +537,7 @@ export async function getChampionAdvisoryByName(
       topChampions: [],
       totalTargetOwned: 0,
       fetchedAt: new Date().toISOString(),
+      ronUsd,
     };
   }
 
@@ -557,6 +593,7 @@ export async function getChampionAdvisoryByName(
       acquisitionOptions: [],
       cheapestOption: null,
       cheapestCostRON: null,
+      cheapestCostUSD: null,
     };
   } else {
     let prices: PriceData = { Basic: null, Rare: null, Epic: null, Legendary: null };
@@ -565,7 +602,7 @@ export async function getChampionAdvisoryByName(
     } catch {
       // leave as nulls
     }
-    const options = calculateAcquisitionOptions(prices, targetRarity);
+    const options = calculateAcquisitionOptions(prices, targetRarity, ronUsd);
     const availableOptions = options.filter((o) => o.available && o.totalCostRON !== null);
     const cheapestOption = availableOptions.length > 0
       ? availableOptions.reduce((best, o) =>
@@ -579,6 +616,7 @@ export async function getChampionAdvisoryByName(
       acquisitionOptions: options,
       cheapestOption,
       cheapestCostRON: cheapestOption?.totalCostRON ?? null,
+      cheapestCostUSD: cheapestOption?.totalCostUSD ?? null,
     };
   }
 
@@ -588,5 +626,6 @@ export async function getChampionAdvisoryByName(
     topChampions: [entry],
     totalTargetOwned: ownsTarget ? 1 : 0,
     fetchedAt: new Date().toISOString(),
+    ronUsd,
   };
 }

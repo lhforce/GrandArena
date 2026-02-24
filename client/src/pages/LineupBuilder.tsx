@@ -18,9 +18,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Loader2, Swords, Trophy, Gem, AlertTriangle, ChevronRight,
-  Crown, Sparkles, Zap, Lock, Save, Users, RefreshCw, ShoppingCart,
+  Crown, Sparkles, Zap, Lock, Save, Users, RefreshCw, ShoppingCart, BarChart3,
 } from "lucide-react";
 
 // ─── Constants ──────────────────────────────────────────────────────
@@ -52,8 +53,18 @@ export default function LineupBuilder() {
   const [numEntries, setNumEntries] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>("OPEN");
   const [buildHighlight, setBuildHighlight] = useState(false);
+  // Per-entry toggle: 'best' = Best Possible, 'myCards' = My Cards Only
+  const [entryMode, setEntryMode] = useState<Record<number, 'best' | 'myCards'>>({});
   const buildBoxRef = useRef<HTMLDivElement>(null);
   const lineupsRef = useRef<HTMLDivElement>(null);
+
+  const getEntryMode = (entryNum: number) => entryMode[entryNum] ?? 'best';
+  const toggleEntryMode = (entryNum: number) => {
+    setEntryMode(prev => ({
+      ...prev,
+      [entryNum]: prev[entryNum] === 'myCards' ? 'best' : 'myCards',
+    }));
+  };
 
   const contestsQuery = trpc.contests.list.useQuery({ status: statusFilter, limit: 50, offset: 0 });
   const budgetQuery = trpc.lineup.gemBudget.useQuery(undefined, { enabled: isAuthenticated });
@@ -402,18 +413,77 @@ export default function LineupBuilder() {
             </div>
           )}
 
-          {optimizeMutation.data.lineups.map((lineup: any, idx: number) => (
+          {optimizeMutation.data.lineups.map((lineup: any, idx: number) => {
+            const entryNum = lineup.entryNumber;
+            const mode = getEntryMode(entryNum);
+            const myCardsLineup = optimizeMutation.data.myCardsLineups?.[idx];
+            const activeLineup = mode === 'myCards' && myCardsLineup ? myCardsLineup : lineup;
+
+            return (
             <Card key={idx} className="glass-card border-gold/20">
               <CardHeader className="pb-2 px-3 sm:px-6">
                 <div className="flex items-center justify-between gap-2">
                   <CardTitle className="text-sm sm:text-base flex items-center gap-2">
-                    <Crown className="w-4 h-4 text-gold" /> Entry #{lineup.entryNumber}
+                    <Crown className="w-4 h-4 text-gold" /> Entry #{entryNum}
+                    {/* My Cards / Best Possible toggle */}
+                    <div className="flex items-center ml-2 bg-muted/50 rounded-full p-0.5">
+                      <button
+                        onClick={() => setEntryMode(prev => ({ ...prev, [entryNum]: 'best' }))}
+                        className={`px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-medium transition-all ${
+                          mode === 'best'
+                            ? 'bg-gold text-black shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        <Trophy className="w-2.5 h-2.5 inline mr-0.5" />Best
+                      </button>
+                      <button
+                        onClick={() => setEntryMode(prev => ({ ...prev, [entryNum]: 'myCards' }))}
+                        className={`px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-medium transition-all ${
+                          mode === 'myCards'
+                            ? 'bg-teal text-black shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        <Lock className="w-2.5 h-2.5 inline mr-0.5" />My Cards
+                      </button>
+                    </div>
                   </CardTitle>
                   <div className="flex items-center gap-2">
                     <span className="text-xs sm:text-sm text-muted-foreground">
-                      <strong className="text-gold">{lineup.predictedScore.toLocaleString()}</strong> pts
+                      <strong className="text-gold">{activeLineup.predictedScore.toLocaleString()}</strong> pts
                     </span>
-                    <Button size="sm" variant="outline" onClick={() => handleSaveLineup(lineup, lineup.entryNumber)}
+                    {/* Confidence indicator */}
+                    {activeLineup.confidence && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge
+                              variant="outline"
+                              className={`text-[9px] sm:text-[10px] h-5 cursor-help ${
+                                activeLineup.confidence.label === 'High'
+                                  ? 'border-green-500/50 text-green-400 bg-green-500/10'
+                                  : activeLineup.confidence.label === 'Medium'
+                                  ? 'border-yellow-500/50 text-yellow-400 bg-yellow-500/10'
+                                  : 'border-red-500/50 text-red-400 bg-red-500/10'
+                              }`}
+                            >
+                              <BarChart3 className="w-2.5 h-2.5 mr-0.5" />
+                              {activeLineup.confidence.score}%
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="text-xs max-w-[220px]">
+                            <p className="font-medium mb-1">Confidence: {activeLineup.confidence.label} ({activeLineup.confidence.score}%)</p>
+                            <p className="text-muted-foreground">
+                              {activeLineup.confidence.sources.match_history > 0 && `${activeLineup.confidence.sources.match_history} champs from match history \u00b7 `}
+                              {activeLineup.confidence.sources.empirical > 0 && `${activeLineup.confidence.sources.empirical} from leaderboard data \u00b7 `}
+                              {activeLineup.confidence.sources.model > 0 && `${activeLineup.confidence.sources.model} from stat model`}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                    <Button size="sm" variant="outline" onClick={() => handleSaveLineup(activeLineup, entryNum)}
                       disabled={saveLineupMutation.isPending} className="h-8 text-xs">
                       <Save className="w-3 h-3 mr-1" /> Save
                     </Button>
@@ -423,7 +493,7 @@ export default function LineupBuilder() {
               <CardContent className="px-3 sm:px-6">
                 <div className="grid grid-cols-5 gap-1.5 sm:gap-3">
                   {/* Champion Cards with Artwork — uses imageUrl from optimizer (rarity-specific) */}
-                  {lineup.champions.map((slot: any, ci: number) => {
+                  {activeLineup.champions.map((slot: any, ci: number) => {
                     const imgUrl = slot.champion.imageUrl;
                     return (
                       <div key={ci} className={`rounded-lg border ${RARITY_BORDER[slot.champion.rarity] ?? "border-border"} bg-card/50 overflow-hidden text-center`}>
@@ -464,22 +534,22 @@ export default function LineupBuilder() {
                   {/* Scheme Card with Artwork — uses imageUrl from optimizer */}
                   <div className="rounded-lg border border-teal/30 bg-teal/5 overflow-hidden text-center">
                     <div className="aspect-[3/4] relative bg-background/30">
-                      {lineup.scheme?.imageUrl ? (
+                      {activeLineup.scheme?.imageUrl ? (
                         <img
-                          src={lineup.scheme.imageUrl}
-                          alt={lineup.scheme.name}
+                          src={activeLineup.scheme.imageUrl}
+                          alt={activeLineup.scheme.name}
                           className="w-full h-full object-cover"
                           loading="lazy"
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                          <Sparkles className={`w-6 h-6 sm:w-8 sm:h-8 ${lineup.scheme ? "text-teal" : "text-teal/40"}`} />
+                          <Sparkles className={`w-6 h-6 sm:w-8 sm:h-8 ${activeLineup.scheme ? "text-teal" : "text-teal/40"}`} />
                         </div>
                       )}
                     </div>
                     <div className="p-1 sm:p-1.5">
-                      <div className="text-[8px] sm:text-[10px] font-medium truncate" title={lineup.scheme?.name ?? "No Scheme"}>
-                        {lineup.scheme?.name ?? "None"}
+                      <div className="text-[8px] sm:text-[10px] font-medium truncate" title={activeLineup.scheme?.name ?? "No Scheme"}>
+                        {activeLineup.scheme?.name ?? "None"}
                       </div>
                       <Badge variant="outline" className="text-[7px] sm:text-[9px] h-3.5 sm:h-4 mt-0.5 text-teal">Scheme</Badge>
                     </div>
@@ -487,13 +557,13 @@ export default function LineupBuilder() {
                 </div>
 
                 {/* Buy Recommendation for 3-qualifier trait lineups */}
-                {lineup.isPartialTraitLineup && lineup.buyRecommendation && (
+                {activeLineup.isPartialTraitLineup && activeLineup.buyRecommendation && (
                   <div className="mt-3 p-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5">
                     <div className="flex items-center gap-2 text-xs sm:text-sm">
                       <ShoppingCart className="w-4 h-4 text-amber-400 shrink-0" />
                       <div>
                         <span className="text-amber-300 font-medium">
-                          {lineup.buyRecommendation.reason}
+                          {activeLineup.buyRecommendation.reason}
                         </span>
                         <div className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
                           This lineup has 3 qualifying MOKIs — buying the 4th will unlock the full trait bonus (+500 pts)
@@ -504,7 +574,8 @@ export default function LineupBuilder() {
                 )}
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
