@@ -50,6 +50,8 @@ export const arbitrageRouter = router({
 
   /**
    * Get supply squeeze opportunities (low-supply cards).
+   * Reads from cached marketplace_prices and joins with arbitrage_opportunities
+   * to pick up signal score + last sold data populated during the last scan.
    */
   getSqueezeOpportunities: publicProcedure.query(async () => {
     const db = await getDb();
@@ -61,6 +63,29 @@ export const arbitrageRouter = router({
       .from(marketplacePrices)
       .where(sql`${marketplacePrices.buyableListings} > 0 AND ${marketplacePrices.buyableListings} <= 10`)
       .orderBy(marketplacePrices.buyableListings);
+
+    // Also pull signal score + last sold data from arbitrage_opportunities table
+    // (populated by detectSupplySqueeze during the last scan)
+    const signalRows = await db
+      .select({
+        championName: arbitrageOpportunities.championName,
+        targetRarity: arbitrageOpportunities.targetRarity,
+        signalScore: arbitrageOpportunities.signalScore,
+        signalLabel: arbitrageOpportunities.signalLabel,
+        lastSoldPriceRon: arbitrageOpportunities.lastSoldPriceRon,
+        lastSoldPriceUsd: arbitrageOpportunities.lastSoldPriceUsd,
+        lastSoldAt: arbitrageOpportunities.lastSoldAt,
+        salesLast24h: arbitrageOpportunities.salesLast24h,
+        salesLast7d: arbitrageOpportunities.salesLast7d,
+      })
+      .from(arbitrageOpportunities)
+      .where(sql`${arbitrageOpportunities.sourceRarity} = 'SQUEEZE'`);
+
+    // Build lookup map: championName+rarity → signal data
+    const signalMap = new Map<string, typeof signalRows[0]>();
+    for (const s of signalRows) {
+      signalMap.set(`${s.championName}::${s.targetRarity}`, s);
+    }
 
     const rates = await getExchangeRates();
     const RELIST_MULTIPLIER = 1.75;
@@ -77,6 +102,8 @@ export const arbitrageRouter = router({
         const profitPct = buyoutCostRon > 0 ? (profitRon / buyoutCostRon) * 100 : 0;
         const score = Math.round(profitPct * (11 - (r.buyableListings || 0)) / 10);
 
+        const sig = signalMap.get(`${r.championName}::${r.rarity}`);
+
         return {
           championName: r.championName,
           rarity: r.rarity,
@@ -92,10 +119,18 @@ export const arbitrageRouter = router({
           estimatedProfitUsd: Math.round(profitRon * rates.ronUsd * 100) / 100,
           estimatedProfitPercent: Math.round(profitPct * 10) / 10,
           squeezeScore: score,
+          // Signal Score (from last scan, null until first scan with sale history)
+          signalScore: sig?.signalScore ?? null,
+          signalLabel: sig?.signalLabel ?? null,
+          lastSoldPriceRon: sig?.lastSoldPriceRon != null ? Number(sig.lastSoldPriceRon) : null,
+          lastSoldPriceUsd: sig?.lastSoldPriceUsd != null ? Number(sig.lastSoldPriceUsd) : null,
+          lastSoldAt: sig?.lastSoldAt ?? null,
+          salesLast24h: sig?.salesLast24h ?? 0,
+          salesLast7d: sig?.salesLast7d ?? 0,
         };
       })
       .filter((o) => o.estimatedProfitPercent > 0)
-      .sort((a, b) => b.squeezeScore - a.squeezeScore);
+      .sort((a, b) => (b.signalScore ?? b.squeezeScore) - (a.signalScore ?? a.squeezeScore));
 
     return { opportunities };
   }),

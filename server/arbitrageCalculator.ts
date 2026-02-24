@@ -11,9 +11,11 @@
 import {
   fetchMarketplacePrice,
   fetchAllRarityPrices,
+  fetchSaleHistory,
   getExchangeRates,
   type MarketplacePriceData,
   type ExchangeRates,
+  type SaleHistoryData,
 } from "./marketplaceClient";
 import { getDb } from "./db";
 import {
@@ -66,6 +68,15 @@ export interface CraftArbitrageOpportunity {
   // Hot signals
   hotSignal: string | null;
   hotScore: number;
+  // Signal Score (0-100) — composite sell-side liquidity + profit score
+  signalScore: number;
+  signalLabel: string; // 'Fire' | 'Hot' | 'Warm' | 'Cold'
+  // Last sold data at target rarity
+  lastSoldPriceRon: number | null;
+  lastSoldPriceUsd: number | null;
+  lastSoldAt: number | null; // Unix timestamp
+  salesLast24h: number;
+  salesLast7d: number;
 }
 
 export interface SupplySqueezeOpportunity {
@@ -84,6 +95,15 @@ export interface SupplySqueezeOpportunity {
   estimatedProfitUsd: number;
   estimatedProfitPercent: number;
   squeezeScore: number; // Lower supply + higher demand = higher score
+  // Signal Score (0-100) — composite sell-side liquidity + profit score
+  signalScore: number;
+  signalLabel: string; // 'Fire' | 'Hot' | 'Warm' | 'Cold'
+  // Last sold data
+  lastSoldPriceRon: number | null;
+  lastSoldPriceUsd: number | null;
+  lastSoldAt: number | null; // Unix timestamp
+  salesLast24h: number;
+  salesLast7d: number;
 }
 
 export interface ArbitrageScanResult {
@@ -118,6 +138,131 @@ function loadAllChampionNames(): string[] {
   return Array.from(names);
 }
 
+// ─── Signal Score ──────────────────────────────────────────────────
+
+/**
+ * Compute Signal Score (0–100) for a craft arbitrage opportunity.
+ *
+ * Components:
+ *   Profit %              25 pts  (scaled: 0% → 0, 100%+ → 25)
+ *   Source supply         20 pts  (fewer buyable listings to acquire = easier)
+ *   Sale velocity 7d      25 pts  (5+ sales → 25, 3–4 → 18, 1–2 → 10, 0 → 0)
+ *   Days since last sale  15 pts  (<1d → 15, <3d → 10, <7d → 5, >7d → 0)
+ *   Sell-side depth       15 pts  (≤5 competing listings → 15, ≤10 → 10, ≤20 → 5, >20 → 0)
+ */
+function computeSignalScore(
+  profitPercent: number,
+  sourceBuyableListings: number,
+  targetBuyableListings: number,
+  saleHistory: SaleHistoryData | null
+): { signalScore: number; signalLabel: string } {
+  const now = Math.floor(Date.now() / 1000);
+
+  // 1. Profit % (25 pts)
+  const profitPts = Math.min(25, (profitPercent / 100) * 25);
+
+  // 2. Source supply tightness (20 pts) — how easy it is to buy the source cards
+  let supplyPts = 0;
+  if (sourceBuyableListings <= 3) supplyPts = 20;
+  else if (sourceBuyableListings <= 5) supplyPts = 15;
+  else if (sourceBuyableListings <= 10) supplyPts = 10;
+  else if (sourceBuyableListings <= 20) supplyPts = 5;
+
+  // 3. Sale velocity at target rarity (25 pts)
+  const salesLast7d = saleHistory?.salesLast7d ?? 0;
+  let velocityPts = 0;
+  if (salesLast7d >= 5) velocityPts = 25;
+  else if (salesLast7d >= 3) velocityPts = 18;
+  else if (salesLast7d >= 1) velocityPts = 10;
+
+  // 4. Days since last sale (15 pts)
+  let recencyPts = 0;
+  if (saleHistory?.lastSoldAt) {
+    const daysSince = (now - saleHistory.lastSoldAt) / 86400;
+    if (daysSince < 1) recencyPts = 15;
+    else if (daysSince < 3) recencyPts = 10;
+    else if (daysSince < 7) recencyPts = 5;
+  }
+
+  // 5. Sell-side depth at target rarity (15 pts) — fewer competing sellers = faster sale
+  let depthPts = 0;
+  if (targetBuyableListings <= 5) depthPts = 15;
+  else if (targetBuyableListings <= 10) depthPts = 10;
+  else if (targetBuyableListings <= 20) depthPts = 5;
+
+  const signalScore = Math.round(profitPts + supplyPts + velocityPts + recencyPts + depthPts);
+
+  let signalLabel: string;
+  if (signalScore >= 80) signalLabel = 'Fire';
+  else if (signalScore >= 60) signalLabel = 'Hot';
+  else if (signalScore >= 40) signalLabel = 'Warm';
+  else signalLabel = 'Cold';
+
+  return { signalScore, signalLabel };
+}
+
+/**
+ * Compute Signal Score for a supply squeeze opportunity.
+ *
+ * Components:
+ *   Profit %              25 pts
+ *   Supply tightness      25 pts  (fewer listings = more control)
+ *   Sale velocity 7d      25 pts
+ *   Days since last sale  15 pts
+ *   Buyout affordability  10 pts  (lower buyout cost = lower risk)
+ */
+function computeSqueezeSignalScore(
+  estimatedProfitPercent: number,
+  buyableListings: number,
+  buyoutCostRon: number,
+  saleHistory: SaleHistoryData | null
+): { signalScore: number; signalLabel: string } {
+  const now = Math.floor(Date.now() / 1000);
+
+  // 1. Profit % (25 pts)
+  const profitPts = Math.min(25, (estimatedProfitPercent / 75) * 25);
+
+  // 2. Supply tightness (25 pts)
+  let supplyPts = 0;
+  if (buyableListings <= 2) supplyPts = 25;
+  else if (buyableListings <= 4) supplyPts = 20;
+  else if (buyableListings <= 6) supplyPts = 15;
+  else if (buyableListings <= 8) supplyPts = 10;
+  else supplyPts = 5;
+
+  // 3. Sale velocity at this rarity (25 pts)
+  const salesLast7d = saleHistory?.salesLast7d ?? 0;
+  let velocityPts = 0;
+  if (salesLast7d >= 5) velocityPts = 25;
+  else if (salesLast7d >= 3) velocityPts = 18;
+  else if (salesLast7d >= 1) velocityPts = 10;
+
+  // 4. Days since last sale (15 pts)
+  let recencyPts = 0;
+  if (saleHistory?.lastSoldAt) {
+    const daysSince = (now - saleHistory.lastSoldAt) / 86400;
+    if (daysSince < 1) recencyPts = 15;
+    else if (daysSince < 3) recencyPts = 10;
+    else if (daysSince < 7) recencyPts = 5;
+  }
+
+  // 5. Buyout affordability (10 pts) — lower cost = lower risk
+  let affordPts = 0;
+  if (buyoutCostRon <= 50) affordPts = 10;
+  else if (buyoutCostRon <= 200) affordPts = 7;
+  else if (buyoutCostRon <= 500) affordPts = 4;
+
+  const signalScore = Math.round(profitPts + supplyPts + velocityPts + recencyPts + affordPts);
+
+  let signalLabel: string;
+  if (signalScore >= 80) signalLabel = 'Fire';
+  else if (signalScore >= 60) signalLabel = 'Hot';
+  else if (signalScore >= 40) signalLabel = 'Warm';
+  else signalLabel = 'Cold';
+
+  return { signalScore, signalLabel };
+}
+
 // ─── Craft Arbitrage Calculator ─────────────────────────────────────
 
 interface CraftPath {
@@ -137,11 +282,13 @@ const CRAFT_PATHS: CraftPath[] = [
 
 /**
  * Calculate craft arbitrage for a single champion across all craft paths.
+ * Accepts a saleHistoryMap keyed by rarity for signal score computation.
  */
 function calculateCraftArbitrage(
   championName: string,
   prices: Record<string, MarketplacePriceData>,
-  rates: ExchangeRates
+  rates: ExchangeRates,
+  saleHistoryMap: Record<string, SaleHistoryData> = {}
 ): CraftArbitrageOpportunity[] {
   const opportunities: CraftArbitrageOpportunity[] = [];
 
@@ -170,6 +317,16 @@ function calculateCraftArbitrage(
     // Only include profitable opportunities
     if (profitPercent <= 0) continue;
 
+    // Sale history for the target rarity (the card we plan to sell)
+    const targetSaleHistory = saleHistoryMap[craftPath.targetRarity] ?? null;
+
+    const { signalScore, signalLabel } = computeSignalScore(
+      profitPercent,
+      sourceData.buyableListings,
+      targetData.buyableListings,
+      targetSaleHistory
+    );
+
     opportunities.push({
       championName,
       targetRarity: craftPath.targetRarity,
@@ -192,6 +349,13 @@ function calculateCraftArbitrage(
       targetTotalListings: targetData.totalListings,
       hotSignal: null,
       hotScore: 0,
+      signalScore,
+      signalLabel,
+      lastSoldPriceRon: targetSaleHistory?.lastSoldPriceRon ?? null,
+      lastSoldPriceUsd: targetSaleHistory?.lastSoldPriceUsd ?? null,
+      lastSoldAt: targetSaleHistory?.lastSoldAt ?? null,
+      salesLast24h: targetSaleHistory?.salesLast24h ?? 0,
+      salesLast7d: targetSaleHistory?.salesLast7d ?? 0,
     });
   }
 
@@ -205,11 +369,13 @@ const SQUEEZE_RELIST_MULTIPLIER = 1.75; // Estimated relist at 1.75x floor after
 
 /**
  * Detect supply squeeze opportunities for a champion.
+ * Accepts a saleHistoryMap keyed by rarity for signal score computation.
  */
 function detectSupplySqueeze(
   championName: string,
   prices: Record<string, MarketplacePriceData>,
-  rates: ExchangeRates
+  rates: ExchangeRates,
+  saleHistoryMap: Record<string, SaleHistoryData> = {}
 ): SupplySqueezeOpportunity[] {
   const opportunities: SupplySqueezeOpportunity[] = [];
 
@@ -240,6 +406,16 @@ function detectSupplySqueeze(
       (estimatedProfitPercent * (SQUEEZE_MAX_LISTINGS - data.buyableListings + 1)) / 10
     );
 
+    // Sale history for this rarity
+    const saleHistory = saleHistoryMap[rarity] ?? null;
+
+    const { signalScore, signalLabel } = computeSqueezeSignalScore(
+      estimatedProfitPercent,
+      data.buyableListings,
+      data.buyoutCostRon,
+      saleHistory
+    );
+
     opportunities.push({
       championName,
       rarity,
@@ -255,6 +431,13 @@ function detectSupplySqueeze(
       estimatedProfitUsd: Math.round(estimatedProfitUsd * 100) / 100,
       estimatedProfitPercent: Math.round(estimatedProfitPercent * 10) / 10,
       squeezeScore,
+      signalScore,
+      signalLabel,
+      lastSoldPriceRon: saleHistory?.lastSoldPriceRon ?? null,
+      lastSoldPriceUsd: saleHistory?.lastSoldPriceUsd ?? null,
+      lastSoldAt: saleHistory?.lastSoldAt ?? null,
+      salesLast24h: saleHistory?.salesLast24h ?? 0,
+      salesLast7d: saleHistory?.salesLast7d ?? 0,
     });
   }
 
@@ -302,8 +485,43 @@ export async function runArbitrageScan(
         try {
           const prices = await fetchAllRarityPrices(name);
 
-          const craftOpps = calculateCraftArbitrage(name, prices, rates);
-          const squeezeOpps = detectSupplySqueeze(name, prices, rates);
+          // Determine which rarities we need sale history for:
+          // - Target rarities of craft opportunities (to check sell-side liquidity)
+          // - Rarities with squeeze potential (to check buy-side demand)
+          const raritiesNeeded = new Set<string>();
+
+          // Check craft paths to find which target rarities are relevant
+          for (const craftPath of CRAFT_PATHS) {
+            const sourceData = prices[craftPath.sourceRarity];
+            const targetData = prices[craftPath.targetRarity];
+            if (sourceData?.floorPriceRon && targetData?.floorPriceRon &&
+                sourceData.buyableListings >= craftPath.cardsNeeded) {
+              raritiesNeeded.add(craftPath.targetRarity);
+            }
+          }
+
+          // Check squeeze candidates
+          for (const rarity of ["Basic", "Rare", "Epic", "Legendary"]) {
+            const data = prices[rarity];
+            if (data?.floorPriceRon && data.buyableListings >= 1 &&
+                data.buyableListings <= SQUEEZE_MAX_LISTINGS) {
+              raritiesNeeded.add(rarity);
+            }
+          }
+
+          // Fetch sale history for each needed rarity
+          const saleHistoryMap: Record<string, SaleHistoryData> = {};
+          for (const rarity of Array.from(raritiesNeeded)) {
+            try {
+              saleHistoryMap[rarity] = await fetchSaleHistory(name, rarity);
+              await sleep(150); // Small delay between sale history calls
+            } catch (err) {
+              console.warn(`[Arbitrage] Sale history failed for ${name} ${rarity}:`, (err as Error).message);
+            }
+          }
+
+          const craftOpps = calculateCraftArbitrage(name, prices, rates, saleHistoryMap);
+          const squeezeOpps = detectSupplySqueeze(name, prices, rates, saleHistoryMap);
 
           return { craftOpps, squeezeOpps, prices, name };
         } catch (err) {
@@ -447,6 +665,13 @@ async function saveArbitrageOpportunities(
         profitPercent: String(opp.profitPercent),
         hotSignal: opp.hotSignal,
         hotScore: opp.hotScore,
+        signalScore: opp.signalScore,
+        signalLabel: opp.signalLabel,
+        lastSoldPriceRon: opp.lastSoldPriceRon != null ? String(opp.lastSoldPriceRon) : null,
+        lastSoldPriceUsd: opp.lastSoldPriceUsd != null ? String(opp.lastSoldPriceUsd) : null,
+        lastSoldAt: opp.lastSoldAt,
+        salesLast24h: opp.salesLast24h,
+        salesLast7d: opp.salesLast7d,
         buyableListings: opp.sourceBuyableListings,
         totalListings: opp.sourceTotalListings,
       });
@@ -509,6 +734,13 @@ export async function getCachedArbitrageOpportunities(): Promise<CraftArbitrageO
     targetTotalListings: 0,
     hotSignal: r.hotSignal,
     hotScore: r.hotScore || 0,
+    signalScore: r.signalScore || 0,
+    signalLabel: r.signalLabel || 'Cold',
+    lastSoldPriceRon: r.lastSoldPriceRon != null ? Number(r.lastSoldPriceRon) : null,
+    lastSoldPriceUsd: r.lastSoldPriceUsd != null ? Number(r.lastSoldPriceUsd) : null,
+    lastSoldAt: r.lastSoldAt ?? null,
+    salesLast24h: r.salesLast24h || 0,
+    salesLast7d: r.salesLast7d || 0,
   }));
 }
 

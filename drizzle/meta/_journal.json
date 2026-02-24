@@ -36,6 +36,13 @@
       "when": 1771904174407,
       "tag": "0004_talented_blade",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1771908745466,
+      "tag": "0005_curly_serpent_society",
+      "breakpoints": true
     }
   ]
 }

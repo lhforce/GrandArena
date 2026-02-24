@@ -423,3 +423,22 @@
 - [x] Verify correct Ronin Marketplace URL format for Grand Arena card listings
 - [x] Fix marketplace link generation in Card Arbitrage page
 - [x] Fix marketplace link generation in Card Crafter page
+
+## Feature: Last Sold Price in Card Arbitrage
+- [x] Fetch last sold price from Ronin Marketplace GraphQL (erc721Activities query)
+- [x] Store lastSoldPriceRon and lastSoldPriceUsd in arbitrage_opportunities and supply_squeeze tables
+- [x] Include last sold price in tRPC response for both craft and squeeze opportunities
+- [x] Add Last Sold column to Craft Arbitrage table
+- [x] Add Last Sold column to Supply Squeeze table
+
+## Feature: Signal Score + Last Sold Price in Card Arbitrage
+- [x] Fetch last sold price from Ronin Marketplace activities query (metadata.price in wei)
+- [x] Resolve champion name + rarity from token ID via erc721Token query
+- [x] Store lastSoldPriceRon, lastSoldPriceUsd, lastSoldAt in arbitrage tables
+- [x] Compute Signal Score (0-100) combining: profit %, supply tightness, last sold recency, sell price vs last sold confirmation
+- [x] Add Signal Score badge (Fire/Hot/Warm/Cold) to Craft Arbitrage table
+- [x] Add Signal Score badge to Supply Squeeze table
+- [x] Add Last Sold column to both tables
+- [x] Default sort by Signal Score descending
+- [x] Add last sold price and date to Supply Squeeze listings
+- [x] Add Signal Score badge to Supply Squeeze table

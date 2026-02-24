@@ -185,7 +185,172 @@ export function detectOutliers(listings: ListingInfo[]): ListingInfo[] {
   }));
 }
 
-// ─── Listing Fetcher ────────────────────────────────────────────────
+// ─── Sale History ───────────────────────────────────────────────────
+
+export interface SaleHistoryData {
+  championName: string;
+  rarity: string;
+  lastSoldPriceRon: number | null;
+  lastSoldPriceUsd: number | null;
+  lastSoldAt: number | null; // Unix timestamp seconds
+  salesLast24h: number;
+  salesLast7d: number;
+  totalSalesFound: number;
+}
+
+/**
+ * Fetch recent sale history for a champion at a specific rarity.
+ * Uses erc721Tokens with DateReceivedDesc sort to find recently transferred tokens,
+ * then cross-references with activities to get actual sale prices.
+ *
+ * Strategy:
+ * 1. Fetch the last 20 tokens sorted by DateReceivedDesc (most recently transferred)
+ * 2. Fetch the last 20 Sale activities for the collection
+ * 3. Cross-reference token IDs to find price + timestamp for matching sales
+ * 4. Count sales within 24h and 7d windows
+ */
+export async function fetchSaleHistory(
+  championName: string,
+  rarity: string
+): Promise<SaleHistoryData> {
+  const rates = await getExchangeRates();
+  const now = Math.floor(Date.now() / 1000);
+  const oneDayAgo = now - 86400;
+  const sevenDaysAgo = now - 7 * 86400;
+
+  const safeName = championName.replace(/"/g, '\\"');
+  const useNameFilter = safeName.length >= 3;
+
+  const empty: SaleHistoryData = {
+    championName,
+    rarity,
+    lastSoldPriceRon: null,
+    lastSoldPriceUsd: null,
+    lastSoldAt: null,
+    salesLast24h: 0,
+    salesLast7d: 0,
+    totalSalesFound: 0,
+  };
+
+  try {
+    // Step 1: Get recently transferred tokens for this champion+rarity
+    const tokenQuery = `{
+      erc721Tokens(
+        tokenAddress: "${GA_CARDS_CONTRACT}",
+        ${useNameFilter ? `name: "${safeName}",` : ''}
+        criteria: [
+          {name: "Card Type", values: ["MOKI"]},
+          {name: "Rarity", values: ["${rarity}"]}
+        ],
+        sort: DateReceivedDesc,
+        from: 0,
+        size: 30
+      ) {
+        results {
+          tokenId
+          name
+          receivedTimestamp
+        }
+      }
+    }`;
+
+    const tokenData = (await gqlFetch(tokenQuery)) as {
+      erc721Tokens: {
+        results: Array<{ tokenId: string; name?: string; receivedTimestamp?: string }>;
+      };
+    };
+
+    const recentTokens = useNameFilter
+      ? tokenData.erc721Tokens.results
+      : tokenData.erc721Tokens.results.filter(
+          (t) => t.name?.toLowerCase() === championName.toLowerCase()
+        );
+
+    if (recentTokens.length === 0) return empty;
+
+    // Build a map of tokenId → receivedTimestamp for quick lookup
+    const tokenTimestamps = new Map<string, number>();
+    for (const t of recentTokens) {
+      if (t.receivedTimestamp) {
+        tokenTimestamps.set(t.tokenId, parseInt(t.receivedTimestamp, 10));
+      }
+    }
+
+    // Step 2: Get recent Sale activities for the collection
+    const activityQuery = `{
+      activities(
+        tokenAddress: "${GA_CARDS_CONTRACT}",
+        activityTypes: [Sale],
+        size: 50
+      ) {
+        results {
+          id
+          timestamp
+          metadata
+          asset {
+            id
+          }
+        }
+      }
+    }`;
+
+    const activityData = (await gqlFetch(activityQuery)) as {
+      activities: {
+        results: Array<{
+          id: number;
+          timestamp: number;
+          metadata: { price: string; payment_token: string };
+          asset: { id: string };
+        }>;
+      };
+    };
+
+    // Step 3: Cross-reference — find activities matching our champion's token IDs
+    const matchedSales: Array<{ priceRon: number; priceUsd: number; timestamp: number }> = [];
+
+    for (const activity of activityData.activities.results) {
+      const tokenId = activity.asset.id;
+      if (!tokenTimestamps.has(tokenId)) continue;
+
+      const priceWei = activity.metadata?.price;
+      if (!priceWei) continue;
+
+      const paymentToken = (activity.metadata?.payment_token || "").toLowerCase();
+      const isWeth = paymentToken === PAYMENT_TOKENS.WETH.toLowerCase();
+      const priceRon = weiToRon(priceWei);
+      const priceUsd = isWeth ? priceRon * rates.wethUsd : priceRon * rates.ronUsd;
+
+      matchedSales.push({
+        priceRon,
+        priceUsd,
+        timestamp: activity.timestamp,
+      });
+    }
+
+    // Sort by most recent first
+    matchedSales.sort((a, b) => b.timestamp - a.timestamp);
+
+    // Count sales in time windows
+    const salesLast24h = matchedSales.filter((s) => s.timestamp >= oneDayAgo).length;
+    const salesLast7d = matchedSales.filter((s) => s.timestamp >= sevenDaysAgo).length;
+
+    const lastSale = matchedSales[0] ?? null;
+
+    return {
+      championName,
+      rarity,
+      lastSoldPriceRon: lastSale ? Math.round(lastSale.priceRon * 100) / 100 : null,
+      lastSoldPriceUsd: lastSale ? Math.round(lastSale.priceUsd * 100) / 100 : null,
+      lastSoldAt: lastSale ? lastSale.timestamp : null,
+      salesLast24h,
+      salesLast7d,
+      totalSalesFound: matchedSales.length,
+    };
+  } catch (err) {
+    console.warn(`[Marketplace] fetchSaleHistory failed for ${championName} ${rarity}:`, (err as Error).message);
+    return empty;
+  }
+}
 
 /**
  * Fetch all active listings for a champion at a specific rarity.

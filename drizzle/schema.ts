@@ -369,6 +369,15 @@ export const arbitrageOpportunities = mysqlTable("arbitrage_opportunities", {
   // Hot card signals
   hotSignal: varchar("hotSignal", { length: 256 }), // e.g. "Price acceleration +30%, Volume up 200%"
   hotScore: int("hotScore").default(0), // Composite score: higher = hotter card
+  // Signal Score (0-100) — composite sell-side liquidity + profit score
+  signalScore: int("signalScore").default(0),
+  signalLabel: varchar("signalLabel", { length: 16 }).default("Cold"), // Fire, Hot, Warm, Cold
+  // Last sold data at target rarity
+  lastSoldPriceRon: decimal("lastSoldPriceRon", { precision: 18, scale: 8 }),
+  lastSoldPriceUsd: decimal("lastSoldPriceUsd", { precision: 12, scale: 4 }),
+  lastSoldAt: bigint("lastSoldAt", { mode: "number" }), // Unix timestamp (seconds)
+  salesLast24h: int("salesLast24h").default(0),
+  salesLast7d: int("salesLast7d").default(0),
   // Listing details
   buyableListings: int("buyableListings").default(0), // Listings after outlier removal
   totalListings: int("totalListings").default(0), // All listings including outliers
