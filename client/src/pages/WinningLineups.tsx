@@ -62,7 +62,7 @@ function gemsToUSD(gems: number): string {
 function formatPayout(payout: string | number | null): string {
   const val = Number(payout ?? 0);
   if (val <= 0) return "";
-  return gemsToUSD(val);
+  return `${val.toFixed(2)} RON`;
 }
 
 function formatRON(ron: number | null | undefined): string {
@@ -438,13 +438,18 @@ function ChampionCardSlot({
     <div className="flex flex-col items-center gap-1 w-[100px]">
       {/* Owned / Buy label above card */}
       {champ && (
-        <div className={`text-xs font-semibold px-2 py-0.5 rounded ${
-          isOwned
-            ? "text-green-400 bg-green-400/10"
-            : "text-amber-400 bg-amber-400/10"
-        }`}>
-          {isOwned ? "Owned" : "Buy"}
-        </div>
+        isOwned ? (
+          <div className="text-xs font-semibold px-2 py-0.5 rounded text-green-400 bg-green-400/10">
+            Owned
+          </div>
+        ) : (
+          <Link
+            href={`/card-crafter?champion=${encodeURIComponent(champ.name)}&rarity=${champ.rarity}`}
+            className="text-xs font-semibold px-2 py-0.5 rounded text-amber-400 bg-amber-400/10 hover:bg-amber-400/20 transition-colors cursor-pointer"
+          >
+            Buy
+          </Link>
+        )
       )}
       {isSchemeCard && (
         <div className="text-xs font-semibold px-2 py-0.5 rounded text-gold bg-gold/10">
@@ -510,12 +515,7 @@ function ChampionCardSlot({
         {champ?.name ?? schemeName ?? "Unknown"}
       </span>
 
-      {/* Rarity badge for champions */}
-      {champ && (
-        <Badge className={`text-[10px] py-0 px-1.5 bg-rarity-${rarityLower} text-rarity-${rarityLower} border-0`}>
-          {champ.rarity}
-        </Badge>
-      )}
+      {/* Rarity badge removed — was showing as colored bar below card */}
     </div>
   );
 }

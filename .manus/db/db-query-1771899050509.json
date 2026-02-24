@@ -1,0 +1,110 @@
+{
+  "query": "SELECT `rank`, score, estimatedPayout FROM leaderboard_entries WHERE estimatedPayout > 0 ORDER BY `rank` ASC LIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute SELECT `rank`, score, estimatedPayout FROM leaderboard_entries WHERE estimatedPayout > 0 ORDER BY `rank` ASC LIMIT 20;",
+  "rows": [
+    {
+      "rank": "1",
+      "score": "4555",
+      "estimatedPayout": "8.75"
+    },
+    {
+      "rank": "1",
+      "score": "33250",
+      "estimatedPayout": "43.04"
+    },
+    {
+      "rank": "1",
+      "score": "30316",
+      "estimatedPayout": "26.25"
+    },
+    {
+      "rank": "1",
+      "score": "28619",
+      "estimatedPayout": "26.25"
+    },
+    {
+      "rank": "1",
+      "score": "30816",
+      "estimatedPayout": "5.25"
+    },
+    {
+      "rank": "1",
+      "score": "30622",
+      "estimatedPayout": "8.75"
+    },
+    {
+      "rank": "1",
+      "score": "32437",
+      "estimatedPayout": "17.50"
+    },
+    {
+      "rank": "1",
+      "score": "30705",
+      "estimatedPayout": "5.25"
+    },
+    {
+      "rank": "1",
+      "score": "3732",
+      "estimatedPayout": "8.75"
+    },
+    {
+      "rank": "1",
+      "score": "34826",
+      "estimatedPayout": "17.50"
+    },
+    {
+      "rank": "1",
+      "score": "30099",
+      "estimatedPayout": "8.75"
+    },
+    {
+      "rank": "1",
+      "score": "28266",
+      "estimatedPayout": "5.25"
+    },
+    {
+      "rank": "1",
+      "score": "27446",
+      "estimatedPayout": "5.25"
+    },
+    {
+      "rank": "1",
+      "score": "32727",
+      "estimatedPayout": "5.25"
+    },
+    {
+      "rank": "1",
+      "score": "33853",
+      "estimatedPayout": "35.00"
+    },
+    {
+      "rank": "1",
+      "score": "30902",
+      "estimatedPayout": "17.50"
+    },
+    {
+      "rank": "1",
+      "score": "33589",
+      "estimatedPayout": "8.75"
+    },
+    {
+      "rank": "1",
+      "score": "33486",
+      "estimatedPayout": "17.50"
+    },
+    {
+      "rank": "1",
+      "score": "31194",
+      "estimatedPayout": "5.25"
+    },
+    {
+      "rank": "1",
+      "score": "30930",
+      "estimatedPayout": "26.25"
+    }
+  ],
+  "messages": [],
+  "stdout": "rank\tscore\testimatedPayout\n1\t4555\t8.75\n1\t33250\t43.04\n1\t30316\t26.25\n1\t28619\t26.25\n1\t30816\t5.25\n1\t30622\t8.75\n1\t32437\t17.50\n1\t30705\t5.25\n1\t3732\t8.75\n1\t34826\t17.50\n1\t30099\t8.75\n1\t28266\t5.25\n1\t27446\t5.25\n1\t32727\t5.25\n1\t33853\t35.00\n1\t30902\t17.50\n1\t33589\t8.75\n1\t33486\t17.50\n1\t31194\t5.25\n1\t30930\t26.25\n",
+  "stderr": "",
+  "execution_time_ms": 68
+}

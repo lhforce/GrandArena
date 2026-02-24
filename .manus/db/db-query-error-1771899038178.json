@@ -1,0 +1,8 @@
+{
+  "query": "SELECT entryRank, score, estimatedPayout FROM leaderboard_entries WHERE estimatedPayout IS NOT NULL AND estimatedPayout != '0' ORDER BY entryRank ASC LIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute SELECT entryRank, score, estimatedPayout FROM leaderboard_entries WHERE estimatedPayout IS NOT NULL AND estimatedPayout != '0' ORDER BY entryRank ASC LIMIT 20;",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 1: Unknown column 'entryrank' in 'field list'"
+  ]
+}

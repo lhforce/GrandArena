@@ -367,3 +367,8 @@
 - [x] Step 5: Choose best scheme from eligible set (selectBestScheme with risk multipliers)
 - [x] Step 6: Rank MOKIs by win% + secondary stats matching the chosen scheme (scoreChampion per category)
 - [x] Added isSchemeEligible tests (12 tests), updated Collect Em All tests, fixed combo formula (kills:350, balls:50) — 167 total tests, 0 TS errors
+
+## Winning Lineups Pre-Publish Fixes
+- [x] Remove the colored bar below champion cards in Winning Lineups (removed rarity Badge component)
+- [x] Fix Buy button — now a Link that navigates to /card-crafter?champion=NAME&rarity=RARITY
+- [x] Fix payout amount display — payout from GA API is in RON, now shows correctly as "X.XX RON" (was incorrectly converted to USD)
