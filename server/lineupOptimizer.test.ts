@@ -667,6 +667,43 @@ describe("getSchemeRiskMultiplier", () => {
     // Should be penalized below the base 0.4
     expect(multiplier).toBeLessThanOrEqual(0.4);
   });
+  it("applies aggressive short-match penalty to reliable performance schemes", () => {
+    // Half Day contests: reliable schemes (kills/balls) get 0.45x penalty
+    const multiplier = getSchemeRiskMultiplier("reliable", null, "topPercent", "combo", true);
+    // Should be 1.0 * 0.45 = 0.45, much less than trait scheme's 2.2
+    expect(multiplier).toBeLessThan(0.5);
+    expect(multiplier).toBeCloseTo(0.45, 2);
+  });
+  it("does NOT apply short-match penalty to trait schemes", () => {
+    // Trait schemes are guaranteed points — not affected by short-match penalty
+    const multiplier = getSchemeRiskMultiplier("guaranteed", null, "topPercent", "trait", true);
+    // Trait schemes return early with 2.2 boost, ignoring isShortMatch
+    expect(multiplier).toBeGreaterThanOrEqual(2.2);
+  });
+  it("penalizes rarity schemes in single-rarity contests (Epic Only)", () => {
+    // Collect 'Em All only scores +35 total in Epic Only (1 unique rarity)
+    const multiplier = getSchemeRiskMultiplier("reliable", null, "topPercent", "rarity", false, "EPIC_ONLY");
+    // Should be near-zero (0.15)
+    expect(multiplier).toBeLessThanOrEqual(0.2);
+  });
+  it("does NOT penalize rarity schemes in open contests", () => {
+    // In open contests, Collect 'Em All can score +140 (4 unique rarities)
+    const multiplier = getSchemeRiskMultiplier("reliable", null, "topPercent", "rarity", false, "OPEN");
+    // Should be normal (0.9 for reliable in topPercent)
+    expect(multiplier).toBeGreaterThan(0.5);
+  });
+  it("trait scheme beats performance scheme in Half Day Epic Only contest", () => {
+    // This is the core scenario: Half Day + Epic Only + Top 20%
+    // Trait scheme should always win over Cage Match (reliable/combo)
+    const traitMultiplier = getSchemeRiskMultiplier("guaranteed", null, "topPercent", "trait", true, "EPIC_ONLY");
+    const cageMatchMultiplier = getSchemeRiskMultiplier("reliable", null, "topPercent", "combo", true, "EPIC_ONLY");
+    const collectEmAllMultiplier = getSchemeRiskMultiplier("reliable", null, "topPercent", "rarity", true, "EPIC_ONLY");
+    // Trait scheme should dominate
+    expect(traitMultiplier).toBeGreaterThan(cageMatchMultiplier);
+    expect(traitMultiplier).toBeGreaterThan(collectEmAllMultiplier);
+    // Collect 'Em All should be near-worthless
+    expect(collectEmAllMultiplier).toBeLessThanOrEqual(0.2);
+  });
 });
 
 describe("selectBestScheme with risk adjustment", () => {

@@ -226,7 +226,8 @@ export function getSchemeRiskMultiplier(
   empiricalOverride?: { winRate: number; appearances: number; confidence: number } | null,
   contestType?: ContestType,
   schemeCategory?: SchemeCategory,
-  isShortMatch?: boolean
+  isShortMatch?: boolean,
+  rarityRestriction?: string
 ): number {
   const baseMultiplier = RISK_MULTIPLIER[riskLevel];
 
@@ -260,22 +261,42 @@ export function getSchemeRiskMultiplier(
     return Math.max(baseMultiplier, 1.8);
   }
 
+  // ─── Rarity Scheme Penalty in Single-Rarity Contests ───────────────
+  // Collect 'Em All and similar rarity-diversity schemes score +35 per UNIQUE rarity.
+  // In single-rarity contests (Epic Only, Legendary Only), all 4 MOKIs are the same
+  // rarity → only 1 unique rarity → only +35 total instead of +140.
+  // These schemes are nearly worthless in single-rarity contests.
+  if (schemeCategory === "rarity" && rarityRestriction) {
+    const singleRarityContests = [
+      "EPIC_ONLY", "LEGENDARY_ONLY", "RARE_ONLY", "COMMON_ONLY", "BASIC_ONLY",
+      "EPIC", "LEGENDARY", "RARE", "COMMON", "BASIC"
+    ];
+    const isSingleRarity = singleRarityContests.some(
+      (r) => rarityRestriction.toUpperCase().includes(r.replace("_ONLY", ""))
+        && !rarityRestriction.toUpperCase().includes("OPEN")
+        && !rarityRestriction.toUpperCase().includes("ONE_OF_EACH")
+    );
+    if (isSingleRarity) {
+      // Near-zero multiplier — rarity scheme is almost worthless here
+      return 0.15;
+    }
+  }
+
   // ─── Short-Match Penalty for Performance Schemes ───────────────────
   // Half Day contests only have 10 matches per MOKI instead of the usual 20+.
   // Performance-based schemes (kills, balls, wart) suffer because there aren't
-  // enough matches for RNG to average out. A bad streak of 3-4 low-kill matches
-  // can tank the entire entry. Apply extra variance penalty.
+  // enough matches for RNG to average out. Apply aggressive penalty so trait
+  // schemes (guaranteed points) always win in short-match contests.
   if (isShortMatch) {
     if (riskLevel === "reliable") {
-      // Kills/balls/wart: 25% penalty in short matches (not enough RNG samples)
-      return baseMultiplier * 0.75;
+      // 55% penalty — kills/balls/wart can't overcome guaranteed trait bonus
+      return baseMultiplier * 0.45;
     }
     if (riskLevel === "moderate") {
-      return baseMultiplier * 0.6;
+      return baseMultiplier * 0.35;
     }
     if (riskLevel === "risky" || riskLevel === "high_risk") {
-      // Risky/high-risk are even worse in short matches
-      return baseMultiplier * 0.5;
+      return baseMultiplier * 0.25;
     }
   }
 
@@ -801,7 +822,8 @@ export function optimizeLineups(input: OptimizerInput): OptimizerResult {
           empiricalData ?? null,
           contestRules.contestType,
           scheme.category,
-          contestRules.isShortMatch
+          contestRules.isShortMatch,
+          contestRules.rarityRestriction
         );
         adjustedTotal = rawTotal * riskMultiplier;
       }

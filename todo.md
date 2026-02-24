@@ -347,3 +347,8 @@
 - [x] Boost trait scheme risk multipliers significantly across all contest types
 - [x] Allow 3-qualifier trait lineups with buy recommendation for the missing 4th MOKI
 - [x] Reduce performance scheme advantage in short-match contests (Half Day = 10 matches)
+
+## Optimizer Bug Fixes Round 14
+- [x] Fix Half Day short-match penalty: Cage Match still winning over trait schemes — increased reliable scheme penalty to 0.45x in Half Day contests (was 0.6x), trait schemes get 2.2x multiplier
+- [x] Fix Collect 'Em All being recommended in single-rarity contests (Epic Only, Legendary Only) — rarity schemes now get 0.15x near-zero multiplier when contest has single-rarity restriction
+- [x] Added 5 new tests validating short-match penalty and rarity restriction logic (162 total tests, 0 TS errors)
