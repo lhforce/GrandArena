@@ -206,15 +206,15 @@ function OwnershipBadge({ entry, targetRarity }: { entry: CrafterEntry; targetRa
 }
 
 function CheapestPathCell({ entry, targetRarity }: { entry: CrafterEntry; targetRarity: TargetRarity }) {
-  if (entry.ownsTarget) {
-    return (
-      <div className={`flex items-center gap-1 ${RARITY_COLORS[targetRarity]} text-sm font-medium`}>
-        <Crown className="w-4 h-4" />
-        Already {targetRarity}
-      </div>
-    );
-  }
   if (!entry.cheapestOption) {
+    if (entry.ownsTarget) {
+      return (
+        <div className={`flex items-center gap-1 ${RARITY_COLORS[targetRarity]} text-sm font-medium`}>
+          <Crown className="w-4 h-4" />
+          Owned
+        </div>
+      );
+    }
     return <span className="text-muted-foreground text-sm">No prices available</span>;
   }
   const opt = entry.cheapestOption;
@@ -237,15 +237,6 @@ function CheapestPathCell({ entry, targetRarity }: { entry: CrafterEntry; target
 }
 
 function AcquisitionOptionsPanel({ entry, targetRarity }: { entry: CrafterEntry; targetRarity: TargetRarity }) {
-  if (entry.ownsTarget) {
-    return (
-      <div className={`p-3 rounded-lg ${RARITY_BG[targetRarity]?.replace("/20", "/10").replace("/40", "/30") ?? "bg-muted/10"} text-sm ${RARITY_COLORS[targetRarity]} flex items-center gap-2`}>
-        <Crown className="w-4 h-4 shrink-0" />
-        You already own a {targetRarity} version of this champion. No action needed.
-      </div>
-    );
-  }
-
   const available = entry.acquisitionOptions.filter((o) => o.available && o.totalCostRON != null);
   const unavailable = entry.acquisitionOptions.filter((o) => !o.available || o.totalCostRON == null);
 

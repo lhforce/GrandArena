@@ -386,3 +386,7 @@
 - [x] Selecting a card from search shows the same crafting cost analysis as selecting via a scheme card
 - [x] Auto-populate Card Crafter when arriving from Winning Lineups Buy button (reads ?champion=NAME&rarity=RARITY URL params)
 - [x] Added getChampionAdvisoryByName backend procedure for single champion lookup
+
+## Card Crafter — Show Crafting Info for All Rarities
+- [x] Show crafting breakdown (marketplace price, craft-from-lower cost) for every rarity level, even if the user already owns the card
+- [x] Remove ownership-based filtering from the crafting info display — CheapestPathCell and AcquisitionOptionsPanel now always show full cost breakdown
