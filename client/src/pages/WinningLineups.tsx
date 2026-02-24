@@ -62,7 +62,7 @@ function gemsToUSD(gems: number): string {
 function formatPayout(payout: string | number | null): string {
   const val = Number(payout ?? 0);
   if (val <= 0) return "";
-  return `${val.toFixed(2)} RON`;
+  return `$${val.toFixed(2)}`;
 }
 
 function formatRON(ron: number | null | undefined): string {
