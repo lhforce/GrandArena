@@ -12,6 +12,7 @@ import {
   classifySchemeRisk,
   getSchemeRiskMultiplier,
   isShortMatchContest,
+  isSchemeEligible,
   type ChampionCard,
   type SchemeCardData,
   type ContestRules,
@@ -89,8 +90,9 @@ describe("scoreChampion", () => {
   it("scores a Basic champion with no scheme", () => {
     const champ = makeChampion("TestMoki", "Basic", "1");
     const score = scoreChampion(champ, null);
-    // Base: (2*85 + 1*40 + 50*0.5 + 0.3*200) * 1.0 = 170+40+25+60 = 295
-    expect(score).toBe(295);
+    // Base: (winRate*300 + avgKills*70 + avgBalls*30 + avgWart*0.3) * 1.0
+    // = (0.3*300 + 2*70 + 1*30 + 50*0.3) * 1.0 = 90+140+30+15 = 275
+    expect(score).toBe(275);
   });
 
   it("applies rarity multiplier for Legendary", () => {
@@ -99,19 +101,19 @@ describe("scoreChampion", () => {
     const basicScore = scoreChampion(basic, null);
     const legendaryScore = scoreChampion(legendary, null);
     // Legendary should be 1.75x the Basic score
-    expect(legendaryScore).toBe(Math.round(295 * 1.75));
+    expect(legendaryScore).toBe(Math.round(275 * 1.75));
   });
 
   it("applies rarity multiplier for Rare", () => {
     const champ = makeChampion("RareMoki", "Rare", "3");
     const score = scoreChampion(champ, null);
-    expect(score).toBe(Math.round(295 * 1.25));
+    expect(score).toBe(Math.round(275 * 1.25));
   });
 
   it("applies rarity multiplier for Epic", () => {
     const champ = makeChampion("EpicMoki", "Epic", "4");
     const score = scoreChampion(champ, null);
-    expect(score).toBe(Math.round(295 * 1.5));
+    expect(score).toBe(Math.round(275 * 1.5));
   });
 
   it("adds scheme bonus for kills category", () => {
@@ -668,42 +670,81 @@ describe("getSchemeRiskMultiplier", () => {
     // Should be penalized below the base 0.4
     expect(multiplier).toBeLessThanOrEqual(0.4);
   });
-  it("applies aggressive short-match penalty to reliable performance schemes", () => {
-    // Half Day contests: reliable schemes (kills/balls) get 0.45x penalty
-    const multiplier = getSchemeRiskMultiplier("reliable", null, "topPercent", "combo", true);
-    // Should be 1.0 * 0.45 = 0.45, much less than trait scheme's 2.2
-    expect(multiplier).toBeLessThan(0.5);
-    expect(multiplier).toBeCloseTo(0.45, 2);
+  it("trait scheme gets 2.2x boost in topPercent contests", () => {
+    // Trait schemes are guaranteed points — always boosted in topPercent
+    const multiplier = getSchemeRiskMultiplier("guaranteed", null, "topPercent", "trait");
+     expect(multiplier).toBeGreaterThanOrEqual(2.2);
   });
-  it("does NOT apply short-match penalty to trait schemes", () => {
-    // Trait schemes are guaranteed points — not affected by short-match penalty
-    const multiplier = getSchemeRiskMultiplier("guaranteed", null, "topPercent", "trait", true);
-    // Trait schemes return early with 2.2 boost, ignoring isShortMatch
-    expect(multiplier).toBeGreaterThanOrEqual(2.2);
+});
+
+describe("isSchemeEligible", () => {
+  const halfDayRules: ContestRules = {
+    rarityRestriction: "EPIC_ONLY",
+    isOneOfEach: false,
+    isStarCap: false,
+    maxEntriesPerUser: 3,
+    format: "topPercent",
+    isShortMatch: true,
+  };
+  const fullDayRules: ContestRules = {
+    rarityRestriction: "OPEN",
+    isOneOfEach: false,
+    isStarCap: false,
+    maxEntriesPerUser: 5,
+    format: "standard",
+    isShortMatch: false,
+  };
+  const oneOfEachRules: ContestRules = {
+    rarityRestriction: "ONE_OF_EACH",
+    isOneOfEach: true,
+    isStarCap: false,
+    maxEntriesPerUser: 5,
+    format: "standard",
+    isShortMatch: false,
+  };
+  const makeSchemeCard = (name: string, cat: string): SchemeCardData => ({
+    tokenId: `s-${name}`,
+    name,
+    description: "",
+    hasTraitFilter: cat === "trait",
+    qualifyingChampionIds: [],
+    category: cat as any,
+    riskLevel: "reliable",
   });
-  it("penalizes rarity schemes in single-rarity contests (Epic Only)", () => {
-    // Collect 'Em All only scores +35 total in Epic Only (1 unique rarity)
-    const multiplier = getSchemeRiskMultiplier("reliable", null, "topPercent", "rarity", false, "EPIC_ONLY");
-    // Should be near-zero (0.15)
-    expect(multiplier).toBeLessThanOrEqual(0.2);
+
+  it("Half-Day: ONLY trait schemes are eligible", () => {
+    expect(isSchemeEligible(makeSchemeCard("Midnight Strike", "trait"), halfDayRules)).toBe(true);
+    expect(isSchemeEligible(makeSchemeCard("Cage Match", "combo"), halfDayRules)).toBe(false);
+    expect(isSchemeEligible(makeSchemeCard("Kill Bonus", "kills"), halfDayRules)).toBe(false);
+    expect(isSchemeEligible(makeSchemeCard("Ball Bonus", "balls"), halfDayRules)).toBe(false);
+    expect(isSchemeEligible(makeSchemeCard("Victory Lap", "win"), halfDayRules)).toBe(false);
+    expect(isSchemeEligible(makeSchemeCard("Collect Em All", "rarity"), halfDayRules)).toBe(false);
   });
-  it("does NOT penalize rarity schemes in open contests", () => {
-    // In open contests, Collect 'Em All can score +140 (4 unique rarities)
-    const multiplier = getSchemeRiskMultiplier("reliable", null, "topPercent", "rarity", false, "OPEN");
-    // Should be normal (0.9 for reliable in topPercent)
-    expect(multiplier).toBeGreaterThan(0.5);
+
+  it("Full-Day: all non-rarity schemes are eligible", () => {
+    expect(isSchemeEligible(makeSchemeCard("Midnight Strike", "trait"), fullDayRules)).toBe(true);
+    expect(isSchemeEligible(makeSchemeCard("Cage Match", "combo"), fullDayRules)).toBe(true);
+    expect(isSchemeEligible(makeSchemeCard("Kill Bonus", "kills"), fullDayRules)).toBe(true);
+    expect(isSchemeEligible(makeSchemeCard("Victory Lap", "win"), fullDayRules)).toBe(true);
   });
-  it("trait scheme beats performance scheme in Half Day Epic Only contest", () => {
-    // This is the core scenario: Half Day + Epic Only + Top 20%
-    // Trait scheme should always win over Cage Match (reliable/combo)
-    const traitMultiplier = getSchemeRiskMultiplier("guaranteed", null, "topPercent", "trait", true, "EPIC_ONLY");
-    const cageMatchMultiplier = getSchemeRiskMultiplier("reliable", null, "topPercent", "combo", true, "EPIC_ONLY");
-    const collectEmAllMultiplier = getSchemeRiskMultiplier("reliable", null, "topPercent", "rarity", true, "EPIC_ONLY");
-    // Trait scheme should dominate
-    expect(traitMultiplier).toBeGreaterThan(cageMatchMultiplier);
-    expect(traitMultiplier).toBeGreaterThan(collectEmAllMultiplier);
-    // Collect 'Em All should be near-worthless
-    expect(collectEmAllMultiplier).toBeLessThanOrEqual(0.2);
+
+  it("Collect Em All: ONLY eligible in One-of-Each contests", () => {
+    const collectEmAll = makeSchemeCard("Collect Em All", "rarity");
+    // Epic Only (single rarity) → NOT eligible
+    expect(isSchemeEligible(collectEmAll, { ...fullDayRules, rarityRestriction: "EPIC_ONLY" })).toBe(false);
+    // Open (mixed rarities possible but not guaranteed) → NOT eligible
+    expect(isSchemeEligible(collectEmAll, fullDayRules)).toBe(false);
+    // One-of-Each (guaranteed 4 rarities) → eligible
+    expect(isSchemeEligible(collectEmAll, oneOfEachRules)).toBe(true);
+  });
+
+  it("Half-Day Epic Only: the exact contest Larry reported — only trait schemes allowed", () => {
+    const traitScheme = makeSchemeCard("Golden Shower", "trait");
+    const cageMatch = makeSchemeCard("Cage Match", "combo");
+    const collectEmAll = makeSchemeCard("Collect Em All", "rarity");
+    expect(isSchemeEligible(traitScheme, halfDayRules)).toBe(true);
+    expect(isSchemeEligible(cageMatch, halfDayRules)).toBe(false);
+    expect(isSchemeEligible(collectEmAll, halfDayRules)).toBe(false);
   });
 });
 
@@ -1112,49 +1153,43 @@ describe("Trait scheme co-optimization", () => {
     expect(categorizeScheme("+25 points for each Rainbow Fur trait in lineup")).toBe("trait");
   });
 
-  it("optimizer picks trait scheme when 4 qualifying MOKIs are available", () => {
+  it("optimizer picks trait scheme in Half-Day contest (trait-only rule enforced)", () => {
+    // In a Half-Day contest, Step 4 of the pipeline eliminates ALL non-trait schemes.
+    // Even if NonShadowStar has better raw stats for Cage Match, it doesn't matter —
+    // Cage Match is ineligible and only trait schemes are considered.
     const allChampions = [
       shadowKiller, shadowBaller, shadowAvg, shadowWeak,
       nonShadowStar, nonShadowGood,
     ];
     const allSchemes = [traitScheme, cageMatch];
-    const rules: ContestRules = {
-      contestId: "trait-test",
-      contestName: "Trait Test Contest",
-      rarityFilter: null,
-      maxEntries: 1,
-      entryCost: 200,
-    };
-
     const result = optimizeLineups({
       ownedMokis: allChampions,
       allMokis: allChampions,
       ownedSchemes: allSchemes,
       allSchemes,
-      // Use topPercent contest type so trait scheme gets the consistency premium (1.65x vs 0.9x)
-      contestRules: { rarityRestriction: "OPEN", isOneOfEach: false, isStarCap: false, maxEntriesPerUser: 5, format: "standard", contestType: "topPercent" },
+      // Half-Day + topPercent: Step 4 eliminates Cage Match, only trait schemes allowed
+      contestRules: {
+        rarityRestriction: "OPEN",
+        isOneOfEach: false,
+        isStarCap: false,
+        maxEntriesPerUser: 5,
+        format: "standard",
+        contestType: "topPercent",
+        isShortMatch: true,  // Half-Day: trait-only
+      },
       numEntries: 1,
       entryFee: 200,
       dailyBudget: 5000,
     });
-
     expect(result.lineups).toHaveLength(1);
     const lineup = result.lineups[0];
-
-    // The trait scheme should be selected for topPercent contests because:
-    // - Trait scheme gets 1.65x multiplier (consistency premium)
-    // - Cage Match gets 0.9x multiplier (variance penalty)
-    // - Lineup-level trait bonus: 4 qualifying × 25 × 5 matches = +500 guaranteed points
+    // Cage Match is ineligible (Step 4 eliminates it) — Midnight Strike must be selected
     expect(lineup.scheme?.name).toBe("Midnight Strike");
-
-    // All 4 champions should be qualifying Shadow MOKIs
+    // Only qualifying Shadow MOKIs should be picked (non-qualifying are hard-excluded)
     const selectedNames = lineup.champions.map((s) => s.champion.name);
     expect(selectedNames).toContain("ShadowKiller");
     expect(selectedNames).toContain("ShadowBaller");
-    expect(selectedNames).toContain("ShadowAvg");
-    expect(selectedNames).toContain("ShadowWeak");
-
-    // NonShadowStar should NOT be picked despite having the best raw stats
+    // NonShadowStar should NOT be picked (doesn't qualify for the trait scheme)
     expect(selectedNames).not.toContain("NonShadowStar");
   });
 
@@ -1197,25 +1232,20 @@ describe("Trait scheme co-optimization", () => {
     expect(lineup.scheme?.name).toBe("Cage Match");
   });
 
-  it("among qualifying trait MOKIs, optimizer picks the best performers", () => {
+   it("among qualifying trait MOKIs, optimizer picks the best performers", () => {
     // 5 qualifying MOKIs but only 4 slots — should pick the 4 best performers
+    // Scores (base formula, Epic 1.5x):
+    //   ShadowStrong: 536, ShadowKiller: 525, ShadowBaller: 471, ShadowWeak: 383, ShadowAvg: 380
+    // ShadowAvg (380) is the weakest and should be dropped
     const fiveShadows = [
-      shadowKiller,   // best: 2.0 kills, 0.6 WR
-      shadowBaller,   // good: 4.0 balls, 0.5 WR
-      shadowAvg,      // decent: 1.0/1.0
-      shadowWeak,     // weakest: 0.3/0.3
+      shadowKiller,   // 525: 2.0 kills, 0.6 WR
+      shadowBaller,   // 471: 4.0 balls, 0.5 WR
+      shadowAvg,      // 380: 1.0/1.0, 0.45 WR — weakest
+      shadowWeak,     // 383: 1.2 kills, 0.45 WR — slightly better than Avg
       makeChampion("ShadowStrong", "Epic", "shadow5", {
         avgKills: 1.8, avgBalls: 1.5, avgWartDistance: 70, winRate: 0.55,
-      }),
+      }),  // 536: best overall
     ];
-    const rules: ContestRules = {
-      contestId: "trait-rank-test",
-      contestName: "Trait Rank Test",
-      rarityFilter: null,
-      maxEntries: 1,
-      entryCost: 200,
-    };
-
     const result = optimizeLineups({
       ownedMokis: fiveShadows,
       allMokis: fiveShadows,
@@ -1228,12 +1258,12 @@ describe("Trait scheme co-optimization", () => {
     });
     const lineup = result.lineups[0];
     const selectedNames = lineup.champions.map((s) => s.champion.name);
-
-    // ShadowWeak should be dropped in favor of the 4 stronger performers
-    expect(selectedNames).not.toContain("ShadowWeak");
+    // ShadowAvg (lowest score) should be dropped in favor of the 4 stronger performers
+    expect(selectedNames).not.toContain("ShadowAvg");
     expect(selectedNames).toContain("ShadowKiller");
     expect(selectedNames).toContain("ShadowBaller");
     expect(selectedNames).toContain("ShadowStrong");
+    expect(selectedNames).toContain("ShadowWeak");
   });
 });
 
@@ -1258,8 +1288,9 @@ describe("Collect Em All rarity scheme scoring", () => {
     imageUrl: null,
   };
 
-  it("should build a valid lineup with 4 Epic champions when Collect Em All is the only scheme", () => {
-    // Verifies the rarity bonus is NOT inflated (4 Epics = 1 unique rarity = +35, not +140)
+  it("Collect Em All is EXCLUDED from Epic Only contests (not isOneOfEach)", () => {
+    // Epic Only = only 1 unique rarity possible -> Collect Em All scores only +35 total
+    // The optimizer should eliminate it and fall back to no-scheme scoring
     const epics = [
       makeChampion("EpicA", "Epic", "e1", { avgKills: 2, avgBalls: 2, avgWartDistance: 100, winRate: 0.5 }),
       makeChampion("EpicB", "Epic", "e2", { avgKills: 2, avgBalls: 2, avgWartDistance: 100, winRate: 0.5 }),
@@ -1271,22 +1302,19 @@ describe("Collect Em All rarity scheme scoring", () => {
       allMokis: epics,
       ownedSchemes: [collectEmAll],
       allSchemes: [collectEmAll],
-      contestRules: { ...defaultRules, rarityRestriction: "EPIC_ONLY" },
+      contestRules: { ...defaultRules, rarityRestriction: "EPIC_ONLY", isOneOfEach: false },
       numEntries: 1,
       entryFee: 200,
       dailyBudget: 5000,
     });
     const lineup = result.lineups[0];
     expect(lineup.champions).toHaveLength(4);
-    // All champions should be Epic (rarity filter respected)
     lineup.champions.forEach((s) => expect(s.champion.rarity).toBe("Epic"));
-    // The predicted score should reflect only 1 unique rarity bonus (not 4x)
-    // With 4 Epics, Collect Em All gives +35 * 1 unique rarity * 5 matches = +175 bonus
-    // NOT +35 * 4 champions * 5 matches = +700 (the old buggy behavior)
-    expect(lineup.predictedScore).toBeGreaterThan(0);
+    // Collect Em All should NOT be selected (ineligible for non-OneOfEach contests)
+    expect(lineup.scheme).toBeNull();
   });
 
-  it("should select Collect Em All with 4 diverse rarities", () => {
+  it("should select Collect Em All ONLY in One-of-Each contests", () => {
     const diverse = [
       makeChampion("BasicA", "Basic", "b1", { avgKills: 2, avgBalls: 2, avgWartDistance: 100, winRate: 0.5 }),
       makeChampion("RareA", "Rare", "r1", { avgKills: 2, avgBalls: 2, avgWartDistance: 100, winRate: 0.5 }),
@@ -1298,7 +1326,8 @@ describe("Collect Em All rarity scheme scoring", () => {
       allMokis: diverse,
       ownedSchemes: [collectEmAll],
       allSchemes: [collectEmAll],
-      contestRules: { ...defaultRules, rarityRestriction: "OPEN" },
+      // One-of-Each: guaranteed 4 different rarities -> Collect Em All scores full +140
+      contestRules: { ...defaultRules, rarityRestriction: "ONE_OF_EACH", isOneOfEach: true },
       numEntries: 1,
       entryFee: 200,
       dailyBudget: 5000,

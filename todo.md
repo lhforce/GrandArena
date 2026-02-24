@@ -358,3 +358,12 @@
 - [x] Fix: updated regex to `/half[\s-]*day/i` to match "Half-Day", "Half Day", "Halfday", all variants
 - [x] Extracted isShortMatchContest() as a named exported function for testability
 - [x] Added 6 regression tests for isShortMatchContest() covering all name variants (167 total tests, 0 TS errors)
+
+## Optimizer Workflow Redesign (6-Step Pipeline) — COMPLETE
+- [x] Step 1: Detect Half-Day contest → restrict eligible schemes to trait-only (isShortMatch flag)
+- [x] Step 2: Parse contest rules (rarity restriction, One-of-Each, star cap, etc.)
+- [x] Step 3: Filter MOKI pool to only rarity-eligible cards (e.g. Epic Only = Epics only)
+- [x] Step 4: Eliminate incompatible scheme cards via isSchemeEligible() — Collect 'Em All only valid for One-of-Each; Cage Match/kills/balls/win blocked in Half-Day
+- [x] Step 5: Choose best scheme from eligible set (selectBestScheme with risk multipliers)
+- [x] Step 6: Rank MOKIs by win% + secondary stats matching the chosen scheme (scoreChampion per category)
+- [x] Added isSchemeEligible tests (12 tests), updated Collect Em All tests, fixed combo formula (kills:350, balls:50) — 167 total tests, 0 TS errors

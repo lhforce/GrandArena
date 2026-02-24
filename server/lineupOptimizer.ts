@@ -1,18 +1,42 @@
 /**
  * Lineup Optimizer Engine — Builds optimal lineups for Grand Arena contests.
- * 
- * Strategy:
- * 1. Filter available cards by contest rarity restrictions
- * 2. Score each champion based on scheme bonuses and performance stats
- * 3. Build up to N lineups using a greedy algorithm that respects card lockups
- * 4. Auto-select the best scheme card per lineup
- * 5. Track card usage across entries to prevent reuse
- * 
+ *
+ * ══════════════════════════════════════════════════════════════════
+ * 6-STEP PIPELINE (executed in strict order for every optimization)
+ * ══════════════════════════════════════════════════════════════════
+ *
+ * Step 1 — Contest format detection
+ *   Detect Half-Day vs Full-Day. Half-Day contests ONLY use trait-based schemes
+ *   because there are too few matches for performance schemes to average out.
+ *
+ * Step 2 — Parse contest rules
+ *   Read rarity restriction (Epic Only, One-of-Each, etc.), star cap, entry limit.
+ *
+ * Step 3 — Filter MOKI pool by rarity eligibility
+ *   Hard-eliminate any champion whose rarity does not satisfy the contest rules.
+ *   Epic Only → only Epic MOKIs. 2 Legendary + 2 Epic → only those rarities.
+ *
+ * Step 4 — Eliminate incompatible scheme cards
+ *   Each scheme has hard eligibility requirements:
+ *   - Trait schemes: always eligible (guaranteed points).
+ *   - Collect 'Em All / rarity schemes: ONLY eligible for One-of-Each contests
+ *     (need 4 different rarities to score full +140).
+ *   - Performance schemes: eligible in Full-Day only (not Half-Day).
+ *   - Win/loss schemes: eligible in Full-Day only.
+ *
+ * Step 5 — Choose the best scheme from the eligible set
+ *   Score each eligible scheme against the filtered MOKI pool.
+ *   Trait schemes are always preferred in Half-Day; in Full-Day they compete on score.
+ *
+ * Step 6 — Rank MOKIs by win% + scheme-matched secondary stats
+ *   Primary sort: win rate (highest first).
+ *   Secondary sort: the stat that matches the chosen scheme (kills for kill schemes,
+ *   balls for ball schemes, wart distance for wart schemes, etc.).
+ *
  * Key rules:
  * - Each lineup = 4 champions + 1 scheme card
  * - Cards are locked for contest duration (can't reuse across entries unless duplicates)
- * - Prioritize legendary champions when no rarity restrictions
- * - One-Of-Each = one card from each rarity (Basic, Rare, Epic, Legendary)
+ * - One-Of-Each = exactly one card from each rarity (Basic, Rare, Epic, Legendary)
  * - Star Cap = maximum total star rating across lineup
  */
 
@@ -59,13 +83,13 @@ export type SchemeCategory =
 export type ContestType = "topPercent" | "winnerTakeAll" | "standard";
 
 export interface ContestRules {
-  rarityRestriction: string; // OPEN, COMMON_ONLY, RARE_ONLY, etc.
+  rarityRestriction: string; // OPEN, COMMON_ONLY, RARE_ONLY, EPIC_ONLY, LEGENDARY_ONLY, ONE_OF_EACH, etc.
   isOneOfEach: boolean;
   isStarCap: boolean;
   maxEntriesPerUser: number;
   format: string;
-  contestType?: ContestType; // Determines variance strategy: topPercent favors consistency
-  isShortMatch?: boolean; // Half Day contests = 10 matches per MOKI (less RNG samples)
+  contestType?: ContestType;
+  isShortMatch?: boolean; // Half Day contests = ~10 matches per MOKI
 }
 
 export interface LineupSlot {
@@ -76,8 +100,8 @@ export interface LineupSlot {
 export interface BuyRecommendation {
   championName: string;
   championTokenId: string;
-  reason: string; // e.g. "Buy this Gold Fur MOKI to complete your Golden Shower lineup"
-  suggestedRarity: string; // Highest rarity recommended
+  reason: string;
+  suggestedRarity: string;
 }
 
 export interface OptimizedLineup {
@@ -87,9 +111,9 @@ export interface OptimizedLineup {
   predictedScore: number;
   entryNumber: number;
   usesOwnedCards: boolean;
-  missingCards: ChampionCard[]; // Cards needed but not owned (for purchase recs)
-  buyRecommendation?: BuyRecommendation; // Suggested 4th champion to buy for trait schemes
-  isPartialTraitLineup?: boolean; // True if only 3 qualifiers available
+  missingCards: ChampionCard[];
+  buyRecommendation?: BuyRecommendation;
+  isPartialTraitLineup?: boolean;
 }
 
 export interface OptimizerResult {
@@ -99,7 +123,7 @@ export interface OptimizerResult {
   warnings: string[];
 }
 
-// ─── Rarity Scoring Multipliers (V4) ──────────────────────────────
+// ─── Rarity Scoring Multipliers ───────────────────────────────────
 const RARITY_MULTIPLIER: Record<string, number> = {
   Basic: 1.0,
   Common: 1.0,
@@ -116,7 +140,7 @@ const RARITY_RANK: Record<string, number> = {
   Legendary: 3,
 };
 
-// ─── Scheme Categorization ─────────────────────────────────────────
+// ─── Step 1: Contest Format Detection ─────────────────────────────
 
 /**
  * Detect whether a contest name indicates a short-match format (Half-Day, One-Round, etc.).
@@ -128,19 +152,19 @@ export function isShortMatchContest(contestName: string): boolean {
   return /half[\s-]*day/i.test(lower) || /one[- ]?round/i.test(lower);
 }
 
+// ─── Step 2: Scheme Categorization & Risk ─────────────────────────
+
+export type SchemeRiskLevel = "guaranteed" | "reliable" | "moderate" | "risky" | "high_risk";
+
 export function categorizeScheme(description: string, hasTraitFilter?: boolean): SchemeCategory {
   const d = description.toLowerCase();
 
-  // Trait schemes: identified by hasTraitFilter flag OR description keywords.
-  // The hasTraitFilter flag from game data is the most reliable indicator.
-  // Description patterns: "+25 points for EACH [trait] in lineup"
   if (hasTraitFilter) return "trait";
   if (
     d.includes("trait") || d.includes("fur") || d.includes("1 of 1") ||
     (d.includes("+25 points for each") && d.includes("in lineup"))
   ) return "trait";
 
-  // Performance schemes: categorized by dominant action
   if (d.includes("elimination") && !d.includes("ball") && !d.includes("wart")) return "kills";
   if (d.includes("gacha ball") && !d.includes("elimination") && !d.includes("wart")) return "balls";
   if (d.includes("wart") && !d.includes("elimination") && !d.includes("ball")) return "wart";
@@ -151,36 +175,10 @@ export function categorizeScheme(description: string, hasTraitFilter?: boolean):
   return "other";
 }
 
-// ─── Scheme Risk Classification ───────────────────────────────────
-// Controllability hierarchy:
-// - GUARANTEED: Points come from lineup composition alone (traits, rarity). No RNG.
-// - RELIABLE: Points from common match actions (kills, balls, wart). Happen every match.
-// - MODERATE: Depends on win/loss outcome (~50/50) or common combos.
-// - RISKY: Depends on specific win conditions or uncommon in-game events.
-// - HIGH_RISK: All-or-nothing gambles that can result in 0 total points.
-
-export type SchemeRiskLevel = "guaranteed" | "reliable" | "moderate" | "risky" | "high_risk";
-
-// Controllability multiplier: how much to trust the scheme's theoretical value
-// 1.0 = full value, 0.3 = only 30% of theoretical value counted
-const RISK_MULTIPLIER: Record<SchemeRiskLevel, number> = {
-  guaranteed: 1.5,    // Strong bonus — trait schemes dominate leaderboards across all contest types
-  reliable: 1.0,      // Full value — these actions happen every match
-  moderate: 0.7,      // Discounted — depends on win/loss
-  risky: 0.4,         // Heavy discount — specific events may not trigger
-  high_risk: 0.2,     // Severe discount — could score 0 total points
-};
-
-/**
- * Classify a scheme card's risk level based on its description.
- * The scheme card is the one strategic lever — we want to maximize controllable outcomes.
- */
 export function classifySchemeRisk(name: string, description: string): SchemeRiskLevel {
   const d = description.toLowerCase();
   const n = name.toLowerCase();
 
-  // GUARANTEED — Trait-based and rarity-based (points from lineup composition)
-  // These give points just for having the right cards. Zero RNG.
   if (
     d.includes("for each") && (
       d.includes("trait") || d.includes("fur") || d.includes("eye") ||
@@ -191,58 +189,91 @@ export function classifySchemeRisk(name: string, description: string): SchemeRis
   ) return "guaranteed";
   if (d.includes("unique card rarity")) return "guaranteed";
 
-  // RELIABLE — Common match actions (kills, balls, wart riding)
-  // These happen every match, just the volume varies.
-  if (d.includes("1.5x") && d.includes("elimination")) return "reliable"; // Aggressive Specialization
-  if (d.includes("1.3x") && d.includes("gacha ball")) return "reliable"; // Collective Specialization
+  if (d.includes("1.5x") && d.includes("elimination")) return "reliable";
+  if (d.includes("1.3x") && d.includes("gacha ball")) return "reliable";
   if (d.includes("per moki elimination") || d.includes("per elimination")) return "reliable";
   if (d.includes("per gacha ball delivered") || d.includes("per gacha ball")) return "reliable";
-  if (d.includes("every second") && d.includes("riding wart")) return "reliable"; // Wart Rodeo
-  // Combo action schemes (kills + balls together)
+  if (d.includes("every second") && d.includes("riding wart")) return "reliable";
   if (n === "cage match" || n === "gacha gouging") return "reliable";
 
-  // MODERATE — Win/loss dependent (~50/50 chance)
   if (n === "victory lap" || (d.includes("winning team") && !d.includes("when"))) return "moderate";
   if (n === "taking a dive" || d.includes("losing team")) return "moderate";
   if (n === "touching the wart" && d.includes("closer")) return "moderate";
 
-  // RISKY — Specific win conditions or uncommon events
-  if (d.includes("when team wins by")) return "risky"; // Baiting the Trap, Grabbing Balls, Moki Smash
-  if (d.includes("when winning") || d.includes("when achieving")) return "risky"; // Beat the Buzzer, Final Blow
-  if (d.includes("picking up a loose")) return "risky"; // Litter Collection, Running Interference
+  if (d.includes("when team wins by")) return "risky";
+  if (d.includes("when winning") || d.includes("when achieving")) return "risky";
+  if (d.includes("picking up a loose")) return "risky";
   if (d.includes("eaten by wart") || n === "saccing") return "risky";
   if (d.includes("eat a moki") || n === "cursed dinner") return "risky";
-  if (d.includes("every second") && d.includes("buff") && !d.includes("wart")) return "risky"; // Flexing
+  if (d.includes("every second") && d.includes("buff") && !d.includes("wart")) return "risky";
 
-  // HIGH_RISK — All-or-nothing gambles
   if (d.includes("double total points") && d.includes("0 total points")) return "high_risk";
   if (n === "enforcing the naughty list" || n === "gacha hoarding") return "high_risk";
 
-  // Default: moderate risk for unrecognized schemes
   return "moderate";
 }
 
+// ─── Step 4: Scheme Eligibility Rules ─────────────────────────────
+
 /**
- * Get the risk-adjusted multiplier for a scheme, optionally overriding with empirical data.
- * 
- * Contest type affects variance strategy:
- * - topPercent (Top 20%, Top 10%): You need to beat X% of players — consistency wins.
- *   Trait schemes (guaranteed points) get a significant bonus. High-variance schemes get penalized.
- * - winnerTakeAll: You need the highest score — high ceiling is rewarded.
- *   Performance schemes get full value. Trait schemes get no extra bonus.
- * - standard: No adjustment.
+ * Determine whether a scheme card is eligible for a given contest.
+ *
+ * Hard eligibility rules (Step 4 of the pipeline):
+ * - Half-Day contests: ONLY trait schemes are eligible.
+ *   Performance/combo/win schemes need many matches to average out; Half-Day has ~10.
+ * - Rarity schemes (Collect 'Em All): ONLY eligible for One-of-Each contests.
+ *   Collect 'Em All scores +35 per UNIQUE rarity. In a single-rarity contest (Epic Only),
+ *   all 4 MOKIs are the same rarity → only +35 total. Worthless.
+ *   In One-of-Each (1 Basic + 1 Rare + 1 Epic + 1 Legendary) → +140 total. Excellent.
+ * - All other schemes: eligible in Full-Day contests.
+ */
+export function isSchemeEligible(
+  scheme: SchemeCardData,
+  contestRules: ContestRules
+): boolean {
+  const isHalfDay = contestRules.isShortMatch ?? false;
+  const isOneOfEach = contestRules.isOneOfEach;
+
+  // ── Half-Day: trait schemes ONLY ──────────────────────────────────
+  if (isHalfDay) {
+    return scheme.category === "trait";
+  }
+
+  // ── Rarity schemes: One-of-Each ONLY ─────────────────────────────
+  // Collect 'Em All and any scheme scoring per unique rarity needs 4 different rarities.
+  // Only One-of-Each contests guarantee all 4 rarities are present.
+  if (scheme.category === "rarity") {
+    return isOneOfEach;
+  }
+
+  // All other schemes are eligible in Full-Day contests
+  return true;
+}
+
+// ─── Risk Multiplier (used only in Full-Day scheme scoring) ────────
+
+const RISK_MULTIPLIER: Record<SchemeRiskLevel, number> = {
+  guaranteed: 1.5,
+  reliable: 1.0,
+  moderate: 0.7,
+  risky: 0.4,
+  high_risk: 0.2,
+};
+
+/**
+ * Get the risk-adjusted multiplier for a scheme.
+ * Used in Step 5 to rank eligible schemes against each other.
+ * In Half-Day contests this is only called for trait schemes (all guaranteed).
  */
 export function getSchemeRiskMultiplier(
   riskLevel: SchemeRiskLevel,
   empiricalOverride?: { winRate: number; appearances: number; confidence: number } | null,
   contestType?: ContestType,
   schemeCategory?: SchemeCategory,
-  isShortMatch?: boolean,
-  rarityRestriction?: string
 ): number {
   const baseMultiplier = RISK_MULTIPLIER[riskLevel];
 
-  // If we have strong empirical data showing this scheme works, override the penalty
+  // Empirical override: if we have strong data showing this scheme wins, trust it
   if (empiricalOverride && empiricalOverride.confidence >= 0.5 && empiricalOverride.appearances >= 5) {
     if (empiricalOverride.winRate > 0.5) {
       const empiricalBoost = Math.min(1.5, baseMultiplier + (empiricalOverride.winRate - 0.5) * 1.5);
@@ -253,196 +284,32 @@ export function getSchemeRiskMultiplier(
     }
   }
 
-  // ─── Trait Scheme Dominance ────────────────────────────────────────────
-  // Empirical observation: trait schemes (Divine Intervention, Midnight Strike,
-  // Golden Shower, Rainbow Riot) dominate top-10 leaderboards across ALL contest types.
-  // This is because:
-  // 1. Guaranteed points with zero variance
-  // 2. Short-match contests (Half Day = 10 matches) don't give enough RNG chances
-  //    for performance schemes to average out
-  // 3. Trait bonus stacks linearly with qualifying MOKIs (4 × 25 × matches)
-  //
-  // Trait schemes get a universal boost across all contest types.
+  // Trait schemes get a universal boost — guaranteed points dominate leaderboards
   if (schemeCategory === "trait") {
-    if (contestType === "topPercent") {
-      // Top-percent: consistency is king, trait schemes are dominant
-      return Math.max(baseMultiplier, 2.2);
-    }
-    // All other contest types: trait schemes still dominate leaderboards
+    if (contestType === "topPercent") return Math.max(baseMultiplier, 2.2);
     return Math.max(baseMultiplier, 1.8);
   }
 
-  // ─── Rarity Scheme Penalty in Single-Rarity Contests ───────────────
-  // Collect 'Em All and similar rarity-diversity schemes score +35 per UNIQUE rarity.
-  // In single-rarity contests (Epic Only, Legendary Only), all 4 MOKIs are the same
-  // rarity → only 1 unique rarity → only +35 total instead of +140.
-  // These schemes are nearly worthless in single-rarity contests.
-  if (schemeCategory === "rarity" && rarityRestriction) {
-    const singleRarityContests = [
-      "EPIC_ONLY", "LEGENDARY_ONLY", "RARE_ONLY", "COMMON_ONLY", "BASIC_ONLY",
-      "EPIC", "LEGENDARY", "RARE", "COMMON", "BASIC"
-    ];
-    const isSingleRarity = singleRarityContests.some(
-      (r) => rarityRestriction.toUpperCase().includes(r.replace("_ONLY", ""))
-        && !rarityRestriction.toUpperCase().includes("OPEN")
-        && !rarityRestriction.toUpperCase().includes("ONE_OF_EACH")
-    );
-    if (isSingleRarity) {
-      // Near-zero multiplier — rarity scheme is almost worthless here
-      return 0.15;
-    }
-  }
-
-  // ─── Short-Match Penalty for Performance Schemes ───────────────────
-  // Half Day contests only have 10 matches per MOKI instead of the usual 20+.
-  // Performance-based schemes (kills, balls, wart) suffer because there aren't
-  // enough matches for RNG to average out. Apply aggressive penalty so trait
-  // schemes (guaranteed points) always win in short-match contests.
-  if (isShortMatch) {
-    if (riskLevel === "reliable") {
-      // 55% penalty — kills/balls/wart can't overcome guaranteed trait bonus
-      return baseMultiplier * 0.45;
-    }
-    if (riskLevel === "moderate") {
-      return baseMultiplier * 0.35;
-    }
-    if (riskLevel === "risky" || riskLevel === "high_risk") {
-      return baseMultiplier * 0.25;
-    }
-  }
-
-  // ─── Contest-Type Variance Adjustments ─────────────────────────────────────
+  // Top-percent: consistency is king — penalize high-variance schemes
   if (contestType === "topPercent") {
-    if (riskLevel === "high_risk") {
-      return baseMultiplier * 0.5;
-    }
-    if (riskLevel === "risky") {
-      return baseMultiplier * 0.8;
-    }
-    if (riskLevel === "reliable") {
-      return baseMultiplier * 0.9;
-    }
+    if (riskLevel === "high_risk") return baseMultiplier * 0.5;
+    if (riskLevel === "risky") return baseMultiplier * 0.8;
+    if (riskLevel === "reliable") return baseMultiplier * 0.9;
   }
 
   // Winner-take-all: high ceiling rewarded
   if (contestType === "winnerTakeAll") {
-    if (riskLevel === "high_risk") {
-      return Math.min(baseMultiplier * 1.5, 0.4);
-    }
+    if (riskLevel === "high_risk") return Math.min(baseMultiplier * 1.5, 0.4);
   }
 
   return baseMultiplier;
 }
 
-// ─── Champion Scoring ──────────────────────────────────────────────
+// ─── Step 3: Rarity Filter ─────────────────────────────────────────
 
 /**
- * Score a champion for a given scheme, considering rarity multiplier and performance stats.
- * 
- * When a Scheme is provided, scoring is SCHEME-DOMINANT: the Scheme's preferred actions
- * are weighted heavily so that MOKIs who excel at those actions rank highest.
- * A small base score (win rate + general versatility) acts as a tiebreaker.
- * 
- * When no Scheme is provided, scoring uses balanced V4 weights across all actions.
- */
-export function scoreChampion(
-  champion: ChampionCard,
-  scheme: SchemeCardData | null,
-  allChampionsInLineup?: ChampionCard[]
-): number {
-  const multiplier = RARITY_MULTIPLIER[champion.rarity] ?? 1.0;
-
-  const avgKills = champion.avgKills ?? 2;
-  const avgBalls = champion.avgBalls ?? 1;
-  const avgWart = champion.avgWartDistance ?? 50;
-  const winRate = champion.winRate ?? 0.3;
-
-  // Base performance score (V4 formula) — always calculated
-  const baseScore =
-    (avgKills * 85 + avgBalls * 40 + avgWart * 0.5 + winRate * 200) * multiplier;
-
-  // No scheme: return base performance only
-  if (!scheme) {
-    return Math.round(baseScore);
-  }
-
-  // Check trait qualification
-  const qualifies = !scheme.hasTraitFilter ||
-    scheme.qualifyingChampionIds.includes(champion.championTokenId ?? "");
-
-  const cat = scheme.category;
-
-  // ─── Trait Schemes ───────────────────────────────────────────────
-  // Trait schemes give +25 per qualifying MOKI per match, applied at the LINEUP level.
-  // The actual trait bonus is calculated in the co-optimization loop (lineup-level).
-  // HARD EXCLUSION: Non-qualifying MOKIs return -Infinity so they are NEVER picked.
-  // A Golden Shower lineup must only contain Gold Fur champions, etc.
-  if (cat === "trait") {
-    if (!qualifies) {
-      // HARD EXCLUSION — non-qualifying MOKIs must never appear in trait scheme lineups
-      return -Infinity;
-    }
-    // Qualifying MOKIs: base performance only — trait bonus added at lineup level
-    return Math.round(baseScore);
-  }
-
-  // ─── Performance Schemes ─────────────────────────────────────────
-  // Performance schemes replace base scoring with scheme-specific weighting.
-  // The scheme changes WHAT actions matter, so we re-weight the stats.
-
-  // Non-qualifying MOKIs for trait-filtered performance schemes (rare but possible)
-  // HARD EXCLUSION for any scheme with hasTraitFilter
-  if (!qualifies) {
-    return -Infinity;
-  }
-
-  let schemeScore = 0;
-
-  switch (cat) {
-    case "kills":
-      // Kill schemes: kills are the dominant scoring factor
-      schemeScore = (avgKills * 200 + avgBalls * 10 + avgWart * 0.1 + winRate * 100) * multiplier;
-      break;
-    case "balls":
-      // Ball schemes: ball deliveries are the dominant scoring factor
-      schemeScore = (avgBalls * 150 + avgKills * 15 + avgWart * 0.1 + winRate * 100) * multiplier;
-      break;
-    case "wart":
-      // Wart schemes: wart distance is the dominant scoring factor
-      schemeScore = (avgWart * 2.0 + avgKills * 15 + avgBalls * 10 + winRate * 100) * multiplier;
-      break;
-    case "win":
-      // Win schemes: win rate is the dominant scoring factor
-      schemeScore = (winRate * 500 + avgKills * 30 + avgBalls * 15 + avgWart * 0.2) * multiplier;
-      break;
-    case "combo":
-      // Combo schemes (e.g., Cage Match: +35/kill, +10/ball)
-      // Kills weighted 3.5x more than balls per scheme's point values
-      schemeScore = (avgKills * 250 + avgBalls * 25 + avgWart * 0.1 + winRate * 80) * multiplier;
-      break;
-    case "rarity":
-      // Rarity schemes: bonus for diverse rarities (handled at lineup level).
-      // Collect 'Em All gives +35 per UNIQUE rarity in the lineup, NOT per champion.
-      // Do NOT add a per-champion bonus here — the lineup-level bonus is calculated
-      // in the co-optimization loop (see "Lineup-level rarity bonus" below).
-      schemeScore = baseScore;
-      break;
-    case "conditional":
-      // Conditional schemes: moderate bonus, depends on game events
-      schemeScore = (avgKills * 80 + avgBalls * 30 + avgWart * 0.3 + winRate * 150) * multiplier;
-      break;
-    default:
-      schemeScore = (avgKills * 80 + avgBalls * 30 + avgWart * 0.3 + winRate * 150) * multiplier;
-      break;
-  }
-
-  return Math.round(schemeScore);
-}
-
-// ─── Rarity Filter ─────────────────────────────────────────────────
-
-/**
- * Filter champions by contest rarity restriction.
+ * Filter champions by contest rarity restriction (Step 3).
+ * Hard-eliminates any MOKI whose rarity does not satisfy the contest rules.
  */
 export function filterByRarity(
   champions: ChampionCard[],
@@ -463,16 +330,119 @@ export function filterByRarity(
       return champions.filter(
         (c) => c.rarity === "Basic" || c.rarity === "Common" || c.rarity === "Rare"
       );
+    case "ONE_OF_EACH":
     case "OPEN":
     default:
       return champions;
   }
 }
 
-// ─── One-Of-Each Builder ───────────────────────────────────────────
+// ─── Step 6: Champion Scoring ──────────────────────────────────────
 
 /**
- * Build a One-Of-Each lineup: exactly one champion from each rarity tier.
+ * Score a champion for a given scheme.
+ *
+ * Step 6 of the pipeline: rank MOKIs by win% (primary) + scheme-matched secondary stats.
+ *
+ * Scoring formula:
+ * - Win rate is the PRIMARY factor (highest weight). A MOKI that wins more matches
+ *   scores more points regardless of scheme.
+ * - Secondary stat is scheme-specific:
+ *   kills → avgKills, balls → avgBalls, wart → avgWartDistance, etc.
+ * - Rarity multiplier applied on top (higher rarity = better base stats generally).
+ *
+ * Hard exclusions:
+ * - Trait schemes: non-qualifying MOKIs return -Infinity (never picked).
+ * - Any scheme with hasTraitFilter: non-qualifying MOKIs return -Infinity.
+ */
+export function scoreChampion(
+  champion: ChampionCard,
+  scheme: SchemeCardData | null,
+  allChampionsInLineup?: ChampionCard[]
+): number {
+  const multiplier = RARITY_MULTIPLIER[champion.rarity] ?? 1.0;
+
+  const avgKills = champion.avgKills ?? 2;
+  const avgBalls = champion.avgBalls ?? 1;
+  const avgWart = champion.avgWartDistance ?? 50;
+  const winRate = champion.winRate ?? 0.3;
+
+  // No scheme: balanced base score
+  if (!scheme) {
+    const baseScore = (winRate * 300 + avgKills * 70 + avgBalls * 30 + avgWart * 0.3) * multiplier;
+    return Math.round(baseScore);
+  }
+
+  // Check trait qualification
+  const qualifies = !scheme.hasTraitFilter ||
+    scheme.qualifyingChampionIds.includes(champion.championTokenId ?? "");
+
+  const cat = scheme.category;
+
+  // ── Trait Schemes ─────────────────────────────────────────────────
+  // Trait bonus (+25 per qualifying MOKI per match) is added at lineup level.
+  // Here we just rank qualifying MOKIs by win% + general performance.
+  // Non-qualifying MOKIs are hard-excluded.
+  if (cat === "trait") {
+    if (!qualifies) return -Infinity;
+    // Qualifying MOKIs get their full base score (same formula as no-scheme).
+    // The trait bonus (+25/match × 5 matches = +125 per qualifier) is applied at the
+    // LINEUP level in the co-optimization loop, not per-MOKI here.
+    // This ensures the test `traitScore === baseScore` holds for qualifying MOKIs.
+    const score = (winRate * 300 + avgKills * 70 + avgBalls * 30 + avgWart * 0.3) * multiplier;
+    return Math.round(score);
+  }
+
+  // Hard exclusion for trait-filtered schemes
+  if (!qualifies) return -Infinity;
+
+  let schemeScore = 0;
+
+  switch (cat) {
+    case "kills":
+      // Win% primary, kills secondary — kills are what this scheme rewards
+      schemeScore = (winRate * 300 + avgKills * 250 + avgBalls * 10 + avgWart * 0.1) * multiplier;
+      break;
+    case "balls":
+      // Win% primary, balls secondary
+      schemeScore = (winRate * 300 + avgBalls * 200 + avgKills * 15 + avgWart * 0.1) * multiplier;
+      break;
+    case "wart":
+      // Win% primary, wart distance secondary
+      schemeScore = (winRate * 300 + avgWart * 2.5 + avgKills * 15 + avgBalls * 10) * multiplier;
+      break;
+    case "win":
+      // Win rate is BOTH primary and secondary — winning is the entire point
+      schemeScore = (winRate * 600 + avgKills * 30 + avgBalls * 15 + avgWart * 0.2) * multiplier;
+      break;
+    case "combo":
+      // Cage Match: +35/kill, +10/ball → kills are far more valuable than balls
+      // Win% primary, kills strongly secondary, balls tertiary
+      // Using 350:50 ratio (7:1) to ensure pure ball carriers (MahoShojo-type) are not picked
+      schemeScore = (winRate * 300 + avgKills * 350 + avgBalls * 50 + avgWart * 0.1) * multiplier;
+      break;
+    case "rarity":
+      // Rarity schemes: diverse rarities matter (handled at lineup level).
+      // Rank by win% + general performance as tiebreaker.
+      schemeScore = (winRate * 300 + avgKills * 70 + avgBalls * 30 + avgWart * 0.3) * multiplier;
+      break;
+    case "conditional":
+      // Conditional schemes: win% primary, balanced secondary
+      schemeScore = (winRate * 400 + avgKills * 80 + avgBalls * 30 + avgWart * 0.3) * multiplier;
+      break;
+    default:
+      schemeScore = (winRate * 300 + avgKills * 80 + avgBalls * 30 + avgWart * 0.3) * multiplier;
+      break;
+  }
+
+  return Math.round(schemeScore);
+}
+
+// ─── One-of-Each Lineup Builder ────────────────────────────────────
+
+/**
+ * Build a One-of-Each lineup: exactly one champion from each rarity tier.
+ * Picks the highest win% champion from each rarity that qualifies for the scheme.
  */
 function buildOneOfEachLineup(
   available: ChampionCard[],
@@ -486,26 +456,24 @@ function buildOneOfEachLineup(
     Legendary: [],
   };
 
-  // Pre-filter: for trait schemes with hasTraitFilter, only allow qualifying champions
   let pool = available;
   if (scheme && scheme.hasTraitFilter && scheme.qualifyingChampionIds.length > 0) {
     pool = available.filter((c) =>
       scheme.qualifyingChampionIds.includes(c.championTokenId ?? "")
     );
   }
+
   for (const c of pool) {
     if (usedTokenIds.has(c.tokenId)) continue;
     const r = c.rarity === "Common" ? "Basic" : c.rarity;
     if (byRarity[r]) byRarity[r].push(c);
   }
 
-  // Need at least one from each rarity
   const rarities = ["Basic", "Rare", "Epic", "Legendary"];
   for (const r of rarities) {
     if (byRarity[r].length === 0) return null;
   }
 
-  // Process from highest rarity first so the best champions get name priority
   const pickOrder = ["Legendary", "Epic", "Rare", "Basic"];
   const lineup: LineupSlot[] = [];
   const usedNames = new Set<string>();
@@ -514,8 +482,7 @@ function buildOneOfEachLineup(
     const scored = byRarity[r]
       .map((c) => ({ champion: c, score: scoreChampion(c, scheme) }))
       .sort((a, b) => b.score - a.score);
-    
-    // Find the best champion from this rarity that isn't a duplicate name
+
     let picked = false;
     for (const slot of scored) {
       const champName = slot.champion.name.toLowerCase();
@@ -526,44 +493,42 @@ function buildOneOfEachLineup(
         break;
       }
     }
-    if (!picked) return null; // Can't fill this rarity without duplicating a name
+    if (!picked) return null;
   }
-
   return lineup;
 }
 
 // ─── Standard Lineup Builder ───────────────────────────────────────
 
-/**
- * Build a standard 4-champion lineup from available cards.
- */
 interface BuildResult {
   slots: LineupSlot[];
   buyRecommendation?: BuyRecommendation;
   isPartialTraitLineup?: boolean;
 }
 
+/**
+ * Build a standard 4-champion lineup.
+ * Step 6: rank by win% + scheme-matched secondary stats (via scoreChampion).
+ */
 function buildStandardLineup(
   available: ChampionCard[],
   scheme: SchemeCardData | null,
   usedTokenIds: Set<string>,
-  allChampions?: ChampionCard[] // Full 180-champion pool for buy recommendations
+  allChampions?: ChampionCard[]
 ): BuildResult | null {
-  // Pre-filter: for trait schemes with hasTraitFilter, only allow qualifying champions
   let pool = available.filter((c) => !usedTokenIds.has(c.tokenId));
-  let qualifyingPool: ChampionCard[] | null = null;
+
   if (scheme && scheme.hasTraitFilter && scheme.qualifyingChampionIds.length > 0) {
-    qualifyingPool = pool.filter((c) =>
+    pool = pool.filter((c) =>
       scheme.qualifyingChampionIds.includes(c.championTokenId ?? "")
     );
-    pool = qualifyingPool;
   }
+
   const candidates = pool
     .map((c) => ({ champion: c, score: scoreChampion(c, scheme) }))
     .filter((c) => c.score > -Infinity)
     .sort((a, b) => b.score - a.score);
 
-  // Greedy pick: take top-scored cards but enforce champion name uniqueness
   const lineup: LineupSlot[] = [];
   const usedNames = new Set<string>();
 
@@ -579,11 +544,8 @@ function buildStandardLineup(
     return { slots: lineup };
   }
 
-  // ─── 3-Qualifier Trait Lineup with Buy Recommendation ─────────────
-  // If this is a trait scheme and we have exactly 3 qualifying champions,
-  // recommend the best 4th champion to buy from the full pool.
+  // 3-qualifier trait lineup with buy recommendation
   if (scheme && scheme.hasTraitFilter && lineup.length === 3 && allChampions) {
-    // Find qualifying champion names from the full 180-champion pool that we don't own
     const ownedNames = new Set(available.map((c) => c.name.toLowerCase()));
     const missingQualifiers = allChampions
       .filter((c) =>
@@ -596,32 +558,28 @@ function buildStandardLineup(
 
     if (missingQualifiers.length > 0) {
       const best = missingQualifiers[0];
-      const traitName = scheme.name; // e.g. "Golden Shower"
       return {
         slots: lineup,
         isPartialTraitLineup: true,
         buyRecommendation: {
           championName: best.champion.name,
           championTokenId: best.champion.championTokenId ?? "",
-          reason: `Buy ${best.champion.name} to complete your ${traitName} lineup (4th qualifying MOKI)`,
-          suggestedRarity: "Legendary", // Always suggest highest rarity
+          reason: `Buy ${best.champion.name} to complete your ${scheme.name} lineup (4th qualifying MOKI)`,
+          suggestedRarity: "Legendary",
         },
       };
     }
   }
 
-  // Not enough champions and no buy recommendation possible
   if (lineup.length < 4) return null;
-
   return { slots: lineup };
 }
 
-// ─── Scheme Selection ──────────────────────────────────────────────
+// ─── Scheme Selection (Step 5) ─────────────────────────────────────
 
 /**
- * Auto-select the best scheme card for a given lineup.
- * Applies risk-adjusted scoring: reliable/guaranteed schemes get full or boosted value,
- * risky schemes get penalized unless empirical data shows they consistently win.
+ * Auto-select the best scheme card for a given lineup from an already-filtered
+ * eligible scheme list (Step 4 filtering must happen before calling this).
  */
 export function selectBestScheme(
   champions: ChampionCard[],
@@ -634,54 +592,43 @@ export function selectBestScheme(
   let bestScore = -Infinity;
 
   for (const scheme of availableSchemes) {
-    // Calculate raw scheme score from champion contributions
     let rawScore = 0;
     for (const champ of champions) {
       rawScore += scoreChampion(champ, scheme, champions);
     }
-
-    // Apply risk-adjusted multiplier
     const empiricalData = schemeEmpirical?.get(scheme.name.toLowerCase());
     const riskMultiplier = getSchemeRiskMultiplier(
       scheme.riskLevel,
-      empiricalData ?? null
+      empiricalData ?? null,
+      undefined,
+      scheme.category,
     );
     const adjustedScore = rawScore * riskMultiplier;
-
     if (adjustedScore > bestScore) {
       bestScore = adjustedScore;
       bestScheme = scheme;
     }
   }
-
   return bestScheme;
 }
 
 // ─── Main Optimizer ────────────────────────────────────────────────
 
 export interface OptimizerInput {
-  ownedMokis: ChampionCard[];  // Cards Larry physically owns (used for lockup tracking only)
-  allMokis: ChampionCard[];    // Full 180-champion pool to pick from (best lineup, not just owned)
+  ownedMokis: ChampionCard[];
+  allMokis: ChampionCard[];
   ownedSchemes: SchemeCardData[];
-  allSchemes: SchemeCardData[]; // Full scheme catalog for recommendations
+  allSchemes: SchemeCardData[];
   contestRules: ContestRules;
-  numEntries: number; // How many entries to build (1-5)
-  entryFee: number; // Gems per entry
-  dailyBudget: number; // Remaining daily gem budget
+  numEntries: number;
+  entryFee: number;
+  dailyBudget: number;
   performanceStats?: Map<string, { avgKills: number; avgBalls: number; avgWartDistance: number; winRate: number }>;
   schemeEmpirical?: Map<string, { winRate: number; appearances: number; confidence: number }>;
 }
 
 /**
- * Build optimal lineups for a contest.
- * 
- * Co-optimization strategy:
- * For each entry, try EVERY available Scheme card, build the best 4-MOKI lineup
- * specifically optimized for that Scheme's scoring, then pick the Scheme+MOKI combo
- * with the highest risk-adjusted total score.
- * 
- * This ensures kill-focused Schemes get kill-heavy MOKIs, ball-focused Schemes get
- * ball carriers, etc. — rather than picking MOKIs first and then finding a Scheme.
+ * Build optimal lineups for a contest using the 6-step pipeline.
  */
 export function optimizeLineups(input: OptimizerInput): OptimizerResult {
   const {
@@ -700,7 +647,7 @@ export function optimizeLineups(input: OptimizerInput): OptimizerResult {
   const warnings: string[] = [];
   const lineups: OptimizedLineup[] = [];
 
-   // Apply performance stats to ALL champions (the full 180-champion pool)
+  // ── Step 6 prep: enrich all champions with performance stats ──────
   const enrichedMokis: ChampionCard[] = allMokis.map((m) => {
     const stats = performanceStats?.get(m.championTokenId ?? "");
     return {
@@ -711,30 +658,39 @@ export function optimizeLineups(input: OptimizerInput): OptimizerResult {
       winRate: stats?.winRate ?? m.winRate,
     };
   });
-  // Filter by rarity restriction
-  const eligible = filterByRarity(enrichedMokis, contestRules.rarityRestriction);
 
+  // ── Step 3: Filter MOKI pool by rarity eligibility ────────────────
+  const eligible = filterByRarity(enrichedMokis, contestRules.rarityRestriction);
   if (eligible.length < 4) {
     warnings.push(
       `Only ${eligible.length} eligible champions found (need 4). Consider purchasing more cards.`
     );
   }
 
-  // Calculate max entries (only limited by contest rules, not gem budget)
-  const actualEntries = Math.min(
-    numEntries,
-    contestRules.maxEntriesPerUser
-  );
+  // ── Step 4: Filter scheme pool to only eligible schemes ───────────
+  // Apply hard eligibility rules: Half-Day → trait only; rarity schemes → One-of-Each only.
+  const allEligibleSchemes = allSchemes.filter((s) => isSchemeEligible(s, contestRules));
+  const ownedEligibleSchemes = ownedSchemes.filter((s) => isSchemeEligible(s, contestRules));
 
-  if (actualEntries < numEntries) {
-    if (contestRules.maxEntriesPerUser < numEntries) {
-      warnings.push(
-        `Contest allows max ${contestRules.maxEntriesPerUser} entries per user.`
-      );
-    }
+  if (allEligibleSchemes.length === 0) {
+    warnings.push("No eligible scheme cards found for this contest type.");
   }
 
-  // Informational warning about gem cost (does not limit lineup generation)
+  // Log eliminated schemes for transparency
+  const eliminatedSchemes = allSchemes.filter((s) => !isSchemeEligible(s, contestRules));
+  if (eliminatedSchemes.length > 0) {
+    const names = eliminatedSchemes.map((s) => s.name).join(", ");
+    const reason = contestRules.isShortMatch
+      ? "Half-Day contest (trait schemes only)"
+      : "not compatible with contest rarity rules";
+    warnings.push(`Excluded schemes (${reason}): ${names}`);
+  }
+
+  const actualEntries = Math.min(numEntries, contestRules.maxEntriesPerUser);
+  if (contestRules.maxEntriesPerUser < numEntries) {
+    warnings.push(`Contest allows max ${contestRules.maxEntriesPerUser} entries per user.`);
+  }
+
   const totalCost = actualEntries * entryFee;
   if (entryFee > 0 && totalCost > dailyBudget) {
     warnings.push(
@@ -746,19 +702,16 @@ export function optimizeLineups(input: OptimizerInput): OptimizerResult {
   const usedSchemeTokenIds = new Set<string>();
 
   for (let entry = 1; entry <= actualEntries; entry++) {
-    // Determine which schemes to evaluate
-    const availableOwnedSchemes = ownedSchemes.filter(
+    // Determine which eligible schemes to try for this entry
+    const availableOwnedEligible = ownedEligibleSchemes.filter(
       (s) => !usedSchemeTokenIds.has(s.tokenId)
     );
-    const schemeCandidates = availableOwnedSchemes.length > 0
-      ? availableOwnedSchemes
-      : allSchemes;
+    const schemeCandidates = availableOwnedEligible.length > 0
+      ? availableOwnedEligible
+      : allEligibleSchemes;
 
-    // Also include a "no scheme" baseline (null) so we can compare
-    const schemesToTry: (SchemeCardData | null)[] = [
-      null,
-      ...schemeCandidates,
-    ];
+    // Include null baseline (no scheme) for comparison
+    const schemesToTry: (SchemeCardData | null)[] = [null, ...schemeCandidates];
 
     let bestComboScore = -Infinity;
     let bestComboSlots: LineupSlot[] | null = null;
@@ -766,10 +719,10 @@ export function optimizeLineups(input: OptimizerInput): OptimizerResult {
     let bestBuyRec: BuyRecommendation | undefined;
     let bestIsPartial = false;
 
-    // Co-optimization: try every Scheme, build the best lineup for each,
-    // pick the combo with the highest risk-adjusted total score
+    // ── Steps 5 & 6: Co-optimize scheme + MOKI selection ─────────────
+    // Try every eligible scheme, build the best MOKI lineup for each,
+    // pick the combo with the highest risk-adjusted total score.
     for (const scheme of schemesToTry) {
-      // Build the best 4-MOKI lineup specifically for this Scheme
       let slots: LineupSlot[] | null = null;
       let buildBuyRec: BuyRecommendation | undefined;
       let buildIsPartial = false;
@@ -785,46 +738,37 @@ export function optimizeLineups(input: OptimizerInput): OptimizerResult {
         }
       }
 
-      // For partial trait lineups (3 qualifiers), still evaluate them
-      // but with a reduced score to prefer full 4-qualifier lineups
       if (!slots || (slots.length < 3)) continue;
       if (slots.length < 4 && !buildIsPartial) continue;
 
-      // Calculate total score for this Scheme+MOKI combo
       let rawTotal = slots.reduce((sum, s) => sum + s.score, 0);
 
-      // ─── Lineup-level trait bonus ───────────────────────────────
-      // Trait schemes give +25 per qualifying MOKI per match, applied to the WHOLE lineup.
+      // ── Lineup-level trait bonus ──────────────────────────────────
+      // Trait schemes give +25 per qualifying MOKI per match.
       // With 4 qualifying MOKIs: 4 × 25 × 5 matches = 500 bonus points.
-      // This is a team synergy bonus that makes full-trait lineups very powerful.
-      // We add this at the lineup level because it depends on how many qualifiers are selected.
       if (scheme && scheme.category === "trait" && scheme.hasTraitFilter) {
         const qualifyingCount = slots.filter((s) =>
           scheme.qualifyingChampionIds.includes(s.champion.championTokenId ?? "")
         ).length;
-        // +25 per qualifying MOKI per match × 5 matches
-        // This is guaranteed (no variance) so it's extremely valuable
         const traitTeamBonus = qualifyingCount * 25 * 5;
         rawTotal += traitTeamBonus;
       }
-      // ─── Lineup-level rarity bonus ────────────────────────────────
+
+      // ── Lineup-level rarity bonus ─────────────────────────────────
       // Collect 'Em All: +35 per EACH unique card rarity in the lineup.
-      // e.g. 4 Epics = 1 unique rarity = +35 total (not +140).
-      //      1 Basic + 1 Rare + 1 Epic + 1 Legendary = 4 unique rarities = +140 total.
-      // Applied at lineup level because it depends on the full set of 4 champions.
+      // Only reaches full value (+140) in One-of-Each contests (enforced by Step 4).
       if (scheme && scheme.category === "rarity") {
         const uniqueRarities = new Set(
           slots.map((s) => {
             const r = s.champion.rarity;
-            return r === "Common" ? "Basic" : r; // normalize Common → Basic
+            return r === "Common" ? "Basic" : r;
           })
         ).size;
-        // +35 per unique rarity per match × 5 matches = up to 700 bonus points
         const rarityTeamBonus = uniqueRarities * 35 * 5;
         rawTotal += rarityTeamBonus;
       }
 
-      // Apply risk-adjusted multiplier for the Scheme
+      // Apply risk-adjusted multiplier (Step 5 ranking)
       let adjustedTotal = rawTotal;
       if (scheme) {
         const empiricalData = schemeEmpirical?.get(scheme.name.toLowerCase());
@@ -833,14 +777,11 @@ export function optimizeLineups(input: OptimizerInput): OptimizerResult {
           empiricalData ?? null,
           contestRules.contestType,
           scheme.category,
-          contestRules.isShortMatch,
-          contestRules.rarityRestriction
         );
         adjustedTotal = rawTotal * riskMultiplier;
       }
 
       // Partial trait lineups (3 qualifiers) get a 20% score reduction
-      // to prefer full 4-qualifier lineups, but still rank above most non-trait options
       if (buildIsPartial) {
         adjustedTotal *= 0.8;
       }
@@ -864,14 +805,11 @@ export function optimizeLineups(input: OptimizerInput): OptimizerResult {
       usedTokenIds.add(slot.champion.tokenId);
     }
 
-    // Mark scheme as used if it's an owned scheme
-    if (bestComboScheme && availableOwnedSchemes.find((s) => s.tokenId === bestComboScheme!.tokenId)) {
+    if (bestComboScheme && availableOwnedEligible.find((s) => s.tokenId === bestComboScheme!.tokenId)) {
       usedSchemeTokenIds.add(bestComboScheme.tokenId);
     }
 
-    // Final scores are already computed with the correct Scheme
     const predictedScore = bestComboSlots.reduce((sum, s) => sum + s.score, 0);
-
     lineups.push({
       champions: bestComboSlots,
       scheme: bestComboScheme,

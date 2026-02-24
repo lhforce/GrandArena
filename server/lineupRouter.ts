@@ -304,8 +304,6 @@ export const lineupRouter = router({
       const { isShortMatchContest } = await import("./lineupOptimizer");
       const isShortMatch = isShortMatchContest(contest.name ?? "");
 
-      console.log(`[Optimizer DEBUG] Contest: "${contest.name}" | contestType: ${contestType} | isShortMatch: ${isShortMatch} | rarityRestriction: ${contest.rarityRestriction}`);
-
       const contestRules: ContestRules = {
         rarityRestriction: contest.rarityRestriction ?? "OPEN",
         isOneOfEach: contest.isOneOfEach ?? false,
