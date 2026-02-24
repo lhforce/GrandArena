@@ -459,3 +459,134 @@ export async function getLegendaryAdvisory(
     fetchedAt: new Date().toISOString(),
   };
 }
+
+/**
+ * Get crafting advisory for a single champion by name.
+ * Used by the "Select Card" entry point in Card Crafter.
+ * Looks up the champion's match stats directly and returns the same
+ * CardCrafterResult shape as getLegendaryAdvisory, but for one champion only.
+ */
+export async function getChampionAdvisoryByName(
+  championName: string,
+  userId: number,
+  targetRarity: TargetRarity = "Legendary"
+): Promise<CardCrafterResult> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // 1. Look up match stats for this champion by name (case-insensitive)
+  const rows = await db
+    .select({
+      championTokenId: matchPlayerStats.championTokenId,
+      avgScore: sql<number>`AVG(CAST(${matchPlayerStats.score} AS DECIMAL(10,2)))`,
+      winRate: sql<number>`AVG(CASE WHEN ${matchPlayerStats.isWinner} = 1 THEN 1.0 ELSE 0.0 END)`,
+      avgKills: sql<number>`AVG(${matchPlayerStats.kills})`,
+      avgBalls: sql<number>`AVG(${matchPlayerStats.balls})`,
+      avgWartDistance: sql<number>`AVG(${matchPlayerStats.wartDistance})`,
+      totalMatches: sql<number>`COUNT(*)`,
+    })
+    .from(matchPlayerStats)
+    .innerJoin(matchHistory, eq(matchPlayerStats.matchId, matchHistory.matchId))
+    .where(
+      and(
+        sql`${matchHistory.matchDate} >= '2026-02-19'`,
+        sql`LOWER(${matchPlayerStats.championName}) = LOWER(${championName})`
+      )
+    )
+    .groupBy(matchPlayerStats.championTokenId);
+
+  if (rows.length === 0) {
+    return {
+      schemeName: championName,
+      targetRarity,
+      topChampions: [],
+      totalTargetOwned: 0,
+      fetchedAt: new Date().toISOString(),
+    };
+  }
+
+  // Pick the row with the most matches (in case of tokenId collisions)
+  const best = rows.reduce((a, b) => (Number(b.totalMatches) > Number(a.totalMatches) ? b : a));
+
+  const ranking: ChampionRanking = {
+    championTokenId: String(best.championTokenId),
+    name: championName,
+    avgScore: Math.round(Number(best.avgScore) * 10) / 10,
+    winRate: Math.round(Number(best.winRate) * 1000) / 1000,
+    avgKills: Math.round(Number(best.avgKills) * 100) / 100,
+    avgBalls: Math.round(Number(best.avgBalls) * 100) / 100,
+    avgWartDistance: Math.round(Number(best.avgWartDistance) * 10) / 10,
+    totalMatches: Number(best.totalMatches),
+    rank: 1,
+  };
+
+  // 2. Check ownership
+  const rarityOrder = ["Basic", "Rare", "Epic", "Legendary"];
+  const targetRarityIndex = rarityOrder.indexOf(targetRarity);
+
+  const ownedCards = await db
+    .select({
+      championTokenId: userCards.championTokenId,
+      rarity: userCards.rarity,
+    })
+    .from(userCards)
+    .where(
+      and(
+        eq(userCards.userId, userId),
+        eq(userCards.cardType, "MOKI"),
+        sql`${userCards.championTokenId} = ${ranking.championTokenId}`
+      )
+    );
+
+  let ownedRarity: string | null = null;
+  for (const card of ownedCards) {
+    const r = card.rarity ?? "Basic";
+    if (!ownedRarity || rarityOrder.indexOf(r) > rarityOrder.indexOf(ownedRarity)) {
+      ownedRarity = r;
+    }
+  }
+
+  const ownsTarget = ownedRarity !== null && rarityOrder.indexOf(ownedRarity) >= targetRarityIndex;
+
+  let entry: CardCrafterEntry;
+  if (ownsTarget) {
+    entry = {
+      ...ranking,
+      ownsTarget: true,
+      ownedRarity,
+      acquisitionOptions: [],
+      cheapestOption: null,
+      cheapestCostRON: null,
+    };
+  } else {
+    let prices: PriceData = { Basic: null, Rare: null, Epic: null, Legendary: null };
+    try {
+      prices = await fetchFloorPrices(championName);
+    } catch {
+      // leave as nulls
+    }
+    const options = calculateAcquisitionOptions(prices, targetRarity);
+    const availableOptions = options.filter((o) => o.available && o.totalCostRON !== null);
+    const cheapestOption = availableOptions.length > 0
+      ? availableOptions.reduce((best, o) =>
+          (o.totalCostRON ?? Infinity) < (best.totalCostRON ?? Infinity) ? o : best
+        )
+      : null;
+    entry = {
+      ...ranking,
+      ownsTarget: false,
+      ownedRarity,
+      acquisitionOptions: options,
+      cheapestOption,
+      cheapestCostRON: cheapestOption?.totalCostRON ?? null,
+    };
+  }
+
+  return {
+    schemeName: championName,
+    targetRarity,
+    topChampions: [entry],
+    totalTargetOwned: ownsTarget ? 1 : 0,
+    fetchedAt: new Date().toISOString(),
+  };
+}

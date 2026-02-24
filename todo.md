@@ -379,3 +379,10 @@
 ## Winning Lineups Prize Pool Display Fix
 - [x] Prize Pool now shows "$262.50 USD" only (was "262.5 GEMs ($2.63)")
 - [x] Entry fee now shows "300 gems" only (removed USD conversion)
+
+## Card Crafter Improvement
+- [x] Add "Select Card" search box as a second entry point at the top of Card Crafter (alongside existing Scheme Card selector)
+- [x] Search by champion name — autocomplete dropdown with live suggestions as you type (2+ chars)
+- [x] Selecting a card from search shows the same crafting cost analysis as selecting via a scheme card
+- [x] Auto-populate Card Crafter when arriving from Winning Lineups Buy button (reads ?champion=NAME&rarity=RARITY URL params)
+- [x] Added getChampionAdvisoryByName backend procedure for single champion lookup

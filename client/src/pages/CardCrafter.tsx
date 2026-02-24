@@ -10,12 +10,13 @@
  *   10 Rare  → 1 Epic
  *   8 Epic   → 1 Legendary
  */
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -50,6 +51,8 @@ import {
   Info,
   Star,
   Sparkles,
+  Search,
+  X,
 } from "lucide-react";
 import { getLoginUrl } from "@/const";
 
@@ -397,21 +400,77 @@ function ChampionRow({
 // ─── Main Page ───────────────────────────────────────────────────────
 export default function CardCrafter() {
   const { isAuthenticated, user } = useAuth();
+  // Entry mode: "scheme" or "champion"
+  const [entryMode, setEntryMode] = useState<"scheme" | "champion">("scheme");
   const [selectedScheme, setSelectedScheme] = useState<string>("");
+  const [selectedChampion, setSelectedChampion] = useState<string>("");
+  const [championSearch, setChampionSearch] = useState<string>("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [topN, setTopN] = useState<number>(10);
   const [targetRarity, setTargetRarity] = useState<TargetRarity>("Legendary");
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const searchRef = useRef<HTMLDivElement>(null);
+  const [urlParamsProcessed, setUrlParamsProcessed] = useState(false);
 
-  const advisoryQuery = trpc.matchup.getLegendaryAdvisory.useQuery(
+  // Read URL params on mount (from Winning Lineups "Buy" button)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const champParam = params.get("champion");
+    const rarityParam = params.get("rarity");
+    if (champParam) {
+      setEntryMode("champion");
+      setSelectedChampion(champParam);
+      setChampionSearch(champParam);
+      if (rarityParam && ["Rare", "Epic", "Legendary"].includes(rarityParam)) {
+        setTargetRarity(rarityParam as TargetRarity);
+      }
+    }
+    setUrlParamsProcessed(true);
+  }, []);
+
+  // Close suggestions on outside click
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  // Autocomplete search query
+  const searchQuery = trpc.matchup.searchChampions.useQuery(
+    { query: championSearch, limit: 10 },
+    {
+      enabled: championSearch.length >= 2 && showSuggestions,
+      staleTime: 30_000,
+    }
+  );
+
+  // Scheme-based advisory query
+  const schemeAdvisoryQuery = trpc.matchup.getLegendaryAdvisory.useQuery(
     { schemeName: selectedScheme, topN, targetRarity },
     {
-      enabled: isAuthenticated && selectedScheme.length > 0,
+      enabled: isAuthenticated && entryMode === "scheme" && selectedScheme.length > 0,
       staleTime: 5 * 60 * 1000,
     }
   );
 
-  const data = advisoryQuery.data;
-  const isLoading = advisoryQuery.isLoading && selectedScheme.length > 0;
+  // Champion-based advisory query
+  const championAdvisoryQuery = trpc.matchup.getChampionAdvisory.useQuery(
+    { championName: selectedChampion, targetRarity },
+    {
+      enabled: isAuthenticated && entryMode === "champion" && selectedChampion.length > 0,
+      staleTime: 5 * 60 * 1000,
+    }
+  );
+
+  // Unified data/loading/error
+  const activeQuery = entryMode === "scheme" ? schemeAdvisoryQuery : championAdvisoryQuery;
+  const data = activeQuery.data;
+  const hasSelection = entryMode === "scheme" ? selectedScheme.length > 0 : selectedChampion.length > 0;
+  const isLoading = activeQuery.isLoading && hasSelection;
 
   const toggleRow = (id: string) => {
     setExpandedRows((prev) => {
@@ -420,6 +479,32 @@ export default function CardCrafter() {
       else next.add(id);
       return next;
     });
+  };
+
+  // Handle scheme selection (clears champion)
+  const handleSchemeSelect = (scheme: string) => {
+    setSelectedScheme(scheme);
+    setSelectedChampion("");
+    setChampionSearch("");
+    setEntryMode("scheme");
+    setExpandedRows(new Set());
+  };
+
+  // Handle champion selection from autocomplete (clears scheme)
+  const handleChampionSelect = (name: string) => {
+    setSelectedChampion(name);
+    setChampionSearch(name);
+    setSelectedScheme("");
+    setEntryMode("champion");
+    setShowSuggestions(false);
+    setExpandedRows(new Set());
+  };
+
+  // Clear champion search
+  const handleClearChampion = () => {
+    setSelectedChampion("");
+    setChampionSearch("");
+    setShowSuggestions(false);
   };
 
   // Summary stats
@@ -484,86 +569,179 @@ export default function CardCrafter() {
       {/* Controls */}
       <Card className="border-border/50">
         <CardContent className="pt-4 pb-4">
-          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-            <div className="flex-1 space-y-1">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Scheme Card
-              </label>
-              <Select value={selectedScheme} onValueChange={setSelectedScheme}>
-                <SelectTrigger className="w-full sm:w-72">
-                  <SelectValue placeholder="Select a scheme card…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SCHEMES.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="flex flex-col gap-4">
+            {/* Row 1: Scheme Card + "or" + Champion Search */}
+            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+              {/* Scheme Card selector */}
+              <div className="flex-1 space-y-1">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Scheme Card
+                </label>
+                <Select
+                  value={entryMode === "scheme" ? selectedScheme : ""}
+                  onValueChange={handleSchemeSelect}
+                >
+                  <SelectTrigger className={`w-full sm:w-64 ${
+                    entryMode === "scheme" && selectedScheme ? "border-gold/50" : ""
+                  }`}>
+                    <SelectValue placeholder="Select a scheme card…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SCHEMES.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Divider */}
+              <div className="flex items-center justify-center sm:pb-1">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-widest px-3">
+                  or
+                </span>
+              </div>
+
+              {/* Champion Search with autocomplete */}
+              <div className="flex-1 space-y-1 relative" ref={searchRef}>
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Search Card
+                </label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    value={championSearch}
+                    onChange={(e) => {
+                      setChampionSearch(e.target.value);
+                      setShowSuggestions(true);
+                      if (e.target.value === "") {
+                        handleClearChampion();
+                      }
+                    }}
+                    onFocus={() => {
+                      if (championSearch.length >= 2) setShowSuggestions(true);
+                    }}
+                    placeholder="Type a champion name…"
+                    className={`pl-9 pr-9 w-full sm:w-64 ${
+                      entryMode === "champion" && selectedChampion ? "border-gold/50" : ""
+                    }`}
+                  />
+                  {championSearch && (
+                    <button
+                      onClick={handleClearChampion}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Autocomplete dropdown */}
+                {showSuggestions && championSearch.length >= 2 && (
+                  <div className="absolute z-50 top-full mt-1 w-full sm:w-64 bg-popover border border-border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                    {searchQuery.isLoading && (
+                      <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Searching…
+                      </div>
+                    )}
+                    {searchQuery.data && searchQuery.data.length === 0 && (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        No champions found
+                      </div>
+                    )}
+                    {searchQuery.data?.map((champ) => (
+                      <button
+                        key={champ.championTokenId}
+                        onClick={() => handleChampionSelect(champ.championName)}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground flex items-center justify-between gap-2 transition-colors"
+                      >
+                        <span className="font-medium">{champ.championName}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {champ.championClass} · {champ.totalMatches} matches
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Target Rarity
-              </label>
-              <Select value={targetRarity} onValueChange={(v) => setTargetRarity(v as TargetRarity)}>
-                <SelectTrigger className="w-36">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Rare">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-rarity-rare" />
-                      Rare
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="Epic">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-rarity-epic" />
-                      Epic
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="Legendary">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-rarity-legendary" />
-                      Legendary
-                    </span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Top N
-              </label>
-              <Select
-                value={String(topN)}
-                onValueChange={(v) => setTopN(Number(v))}
-              >
-                <SelectTrigger className="w-24">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[5, 8, 10, 15, 20].map((n) => (
-                    <SelectItem key={n} value={String(n)}>
-                      Top {n}
+            {/* Row 2: Target Rarity + Top N */}
+            <div className="flex flex-row gap-3 items-end">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Target Rarity
+                </label>
+                <Select value={targetRarity} onValueChange={(v) => setTargetRarity(v as TargetRarity)}>
+                  <SelectTrigger className="w-36">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Rare">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-rarity-rare" />
+                        Rare
+                      </span>
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    <SelectItem value="Epic">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-rarity-epic" />
+                        Epic
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="Legendary">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-rarity-legendary" />
+                        Legendary
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {entryMode === "scheme" && (
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Top N
+                  </label>
+                  <Select
+                    value={String(topN)}
+                    onValueChange={(v) => setTopN(Number(v))}
+                  >
+                    <SelectTrigger className="w-24">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[5, 8, 10, 15, 20].map((n) => (
+                        <SelectItem key={n} value={String(n)}>
+                          Top {n}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Active selection indicator */}
+              {hasSelection && (
+                <div className="ml-auto flex items-center gap-1.5 text-xs text-gold">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {entryMode === "scheme" ? `Scheme: ${selectedScheme}` : `Card: ${selectedChampion}`}
+                </div>
+              )}
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Empty state */}
-      {!selectedScheme && (
+      {!hasSelection && (
         <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
           <Swords className="w-10 h-10 text-muted-foreground/40" />
           <p className="text-muted-foreground">
-            Select a scheme card above to see the top-ranked MOKIs and acquisition costs.
+            Select a scheme card or search for a champion above to see acquisition costs.
           </p>
         </div>
       )}
@@ -577,10 +755,10 @@ export default function CardCrafter() {
       )}
 
       {/* Error */}
-      {advisoryQuery.isError && (
+      {activeQuery.isError && (
         <Card className="border-destructive/40 bg-destructive/10">
           <CardContent className="pt-4 text-sm text-destructive">
-            Failed to load data: {advisoryQuery.error.message}
+            Failed to load data: {activeQuery.error.message}
           </CardContent>
         </Card>
       )}

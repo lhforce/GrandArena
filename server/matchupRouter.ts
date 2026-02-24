@@ -39,7 +39,7 @@ import {
   getUserMokisForPrep,
   loadSchemeData,
 } from "./contestPrep";
-import { getLegendaryAdvisory } from "./legendaryAdvisor";
+import { getLegendaryAdvisory, getChampionAdvisoryByName } from "./legendaryAdvisor";
 import { buildCounterLineup, getOwnedChampionIds } from "./opponentCrusher";
 import { getMetaReport } from "./metaReport";
 
@@ -555,6 +555,18 @@ export const matchupRouter = router({
     .query(async ({ input, ctx }) => {
       const userId = ctx.user.id;
       return getLegendaryAdvisory(input.schemeName, userId, input.topN, input.targetRarity);
+    }),
+
+  /**
+   * Get crafting advisory for a single champion by name (for "Select Card" entry point).
+   */
+  getChampionAdvisory: protectedProcedure
+    .input(z.object({
+      championName: z.string(),
+      targetRarity: z.enum(["Rare", "Epic", "Legendary"]).default("Legendary"),
+    }))
+    .query(async ({ input, ctx }) => {
+      return getChampionAdvisoryByName(input.championName, ctx.user.id, input.targetRarity);
     }),
 
   // ─── Opponent Crusher ──────────────────────────────────────────────
