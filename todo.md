@@ -342,3 +342,8 @@
 - [x] Rename Legendary Builder to Card Crafter (sidebar, page title, route)
 - [x] Add Rare crafting (3 Basic → 1 Rare) and Epic crafting (10 Rare → 1 Epic) to Card Crafter
 - [x] Update Legendary crafting recipe to 8 Epic → 1 Legendary
+
+## Lineup Builder: Trait Scheme Boost
+- [x] Boost trait scheme risk multipliers significantly across all contest types
+- [x] Allow 3-qualifier trait lineups with buy recommendation for the missing 4th MOKI
+- [x] Reduce performance scheme advantage in short-match contests (Half Day = 10 matches)

@@ -299,6 +299,10 @@ export const lineupRouter = router({
         /winner|1st place|first place|highest score/.test(contestNameLower) ? "winnerTakeAll" :
         "standard";
 
+      // Detect short-match contests (Half Day = ~10 matches per MOKI)
+      // Performance schemes suffer in short matches due to insufficient RNG samples
+      const isShortMatch = /half\s*day/i.test(contestNameLower) || /one[- ]?round/i.test(contestNameLower);
+
       const contestRules: ContestRules = {
         rarityRestriction: contest.rarityRestriction ?? "OPEN",
         isOneOfEach: contest.isOneOfEach ?? false,
@@ -306,6 +310,7 @@ export const lineupRouter = router({
         maxEntriesPerUser: contest.maxEntriesPerUser ?? 1,
         format: contest.format,
         contestType,
+        isShortMatch,
       };
 
       // Load empirical scheme performance data for risk override

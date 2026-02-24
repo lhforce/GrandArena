@@ -20,7 +20,7 @@ import {
 import { toast } from "sonner";
 import {
   Loader2, Swords, Trophy, Gem, AlertTriangle, ChevronRight,
-  Crown, Sparkles, Zap, Lock, Save, Users, RefreshCw,
+  Crown, Sparkles, Zap, Lock, Save, Users, RefreshCw, ShoppingCart,
 } from "lucide-react";
 
 // ─── Constants ──────────────────────────────────────────────────────
@@ -432,6 +432,23 @@ export default function LineupBuilder() {
                     </div>
                   </div>
                 </div>
+
+                {/* Buy Recommendation for 3-qualifier trait lineups */}
+                {lineup.isPartialTraitLineup && lineup.buyRecommendation && (
+                  <div className="mt-3 p-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5">
+                    <div className="flex items-center gap-2 text-xs sm:text-sm">
+                      <ShoppingCart className="w-4 h-4 text-amber-400 shrink-0" />
+                      <div>
+                        <span className="text-amber-300 font-medium">
+                          {lineup.buyRecommendation.reason}
+                        </span>
+                        <div className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
+                          This lineup has 3 qualifying MOKIs — buying the 4th will unlock the full trait bonus (+500 pts)
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}

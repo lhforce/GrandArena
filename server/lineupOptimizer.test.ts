@@ -640,7 +640,7 @@ describe("classifySchemeRisk", () => {
 
 describe("getSchemeRiskMultiplier", () => {
   it("returns correct base multipliers", () => {
-    expect(getSchemeRiskMultiplier("guaranteed")).toBe(1.15);
+    expect(getSchemeRiskMultiplier("guaranteed")).toBe(1.5);
     expect(getSchemeRiskMultiplier("reliable")).toBe(1.0);
     expect(getSchemeRiskMultiplier("moderate")).toBe(0.7);
     expect(getSchemeRiskMultiplier("risky")).toBe(0.4);
