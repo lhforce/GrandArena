@@ -124,12 +124,16 @@ export interface OptimizerResult {
 }
 
 // ─── Rarity Scoring Multipliers ───────────────────────────────────
+// These multipliers represent the performance advantage of higher-rarity cards.
+// Legendaries are significantly better than Basics — the multiplier gap must be
+// large enough to ensure Legendaries are always preferred in OPEN contests,
+// even when a Basic has slightly better match history stats.
 const RARITY_MULTIPLIER: Record<string, number> = {
   Basic: 1.0,
   Common: 1.0,
-  Rare: 1.25,
-  Epic: 1.5,
-  Legendary: 1.75,
+  Rare: 1.6,
+  Epic: 2.2,
+  Legendary: 3.0,
 };
 
 const RARITY_RANK: Record<string, number> = {
@@ -305,7 +309,46 @@ export function getSchemeRiskMultiplier(
   return baseMultiplier;
 }
 
-// ─── Step 3: Rarity Filter ─────────────────────────────────────────
+/// ─── Rarity Deduplication Pre-Filter ───────────────────────────────
+
+/**
+ * Deduplicate champions by champion name, keeping only the highest-rarity version.
+ *
+ * RULE: If a Legendary version of a champion exists in the pool, ALWAYS use it
+ * over any other rarity (Epic, Rare, Basic) of the same champion.
+ * This applies in OPEN contests and any contest where multiple rarities are eligible.
+ *
+ * For ONE_OF_EACH contests this function is NOT applied — all rarities are needed.
+ *
+ * Rarity priority: Legendary > Epic > Rare > Common/Basic
+ */
+export function deduplicateByHighestRarity(
+  champions: ChampionCard[],
+  isOneOfEach = false
+): ChampionCard[] {
+  // One-of-Each contests need all rarities — do not deduplicate
+  if (isOneOfEach) return champions;
+
+  const bestByName = new Map<string, ChampionCard>();
+
+  for (const champ of champions) {
+    const key = champ.name.toLowerCase();
+    const existing = bestByName.get(key);
+    if (!existing) {
+      bestByName.set(key, champ);
+    } else {
+      const existingRank = RARITY_RANK[existing.rarity] ?? 0;
+      const champRank = RARITY_RANK[champ.rarity] ?? 0;
+      if (champRank > existingRank) {
+        bestByName.set(key, champ);
+      }
+    }
+  }
+
+  return Array.from(bestByName.values());
+}
+
+// ─── Step 3: Rarity Filter ───────────────────────────────────────────────────────────────────────────────────────────
 
 /**
  * Filter champions by contest rarity restriction (Step 3).
@@ -659,16 +702,21 @@ export function optimizeLineups(input: OptimizerInput): OptimizerResult {
     };
   });
 
-  // ── Step 3: Filter MOKI pool by rarity eligibility ────────────────
-  const eligible = filterByRarity(enrichedMokis, contestRules.rarityRestriction);
+  // ── Step 3: Filter MOKI pool by rarity eligibility ────────────────────
+  const rarityFiltered = filterByRarity(enrichedMokis, contestRules.rarityRestriction);
+
+  // ── Legendary Deduplication: keep only the highest-rarity version of each champion ──
+  // RULE: If a Legendary version of a champion exists in the pool, ALWAYS use it.
+  // This applies in OPEN and single-rarity contests. Skipped for ONE_OF_EACH (needs all rarities).
+  const eligible = deduplicateByHighestRarity(rarityFiltered, contestRules.isOneOfEach);
+
   if (eligible.length < 4) {
     warnings.push(
       `Only ${eligible.length} eligible champions found (need 4). Consider purchasing more cards.`
     );
   }
 
-  // ── Step 4: Filter scheme pool to only eligible schemes ───────────
-  // Apply hard eligibility rules: Half-Day → trait only; rarity schemes → One-of-Each only.
+  // ── Step 4: Filter scheme pool to only eligible schemes ───────────────────────pply hard eligibility rules: Half-Day → trait only; rarity schemes → One-of-Each only.
   const allEligibleSchemes = allSchemes.filter((s) => isSchemeEligible(s, contestRules));
   const ownedEligibleSchemes = ownedSchemes.filter((s) => isSchemeEligible(s, contestRules));
 
@@ -710,8 +758,13 @@ export function optimizeLineups(input: OptimizerInput): OptimizerResult {
       ? availableOwnedEligible
       : allEligibleSchemes;
 
-    // Include null baseline (no scheme) for comparison
-    const schemesToTry: (SchemeCardData | null)[] = [null, ...schemeCandidates];
+    // Include null baseline (no scheme) for comparison ONLY when no eligible schemes are available.
+    // In Half-Day contests, a trait scheme MUST be used (never fall back to null).
+    // In Full-Day contests, only include null if no owned eligible schemes exist.
+    const includeNullBaseline = schemeCandidates.length === 0;
+    const schemesToTry: (SchemeCardData | null)[] = includeNullBaseline
+      ? [null, ...schemeCandidates]
+      : schemeCandidates;
 
     let bestComboScore = -Infinity;
     let bestComboSlots: LineupSlot[] | null = null;

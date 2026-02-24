@@ -100,20 +100,20 @@ describe("scoreChampion", () => {
     const legendary = makeChampion("LegendMoki", "Legendary", "2");
     const basicScore = scoreChampion(basic, null);
     const legendaryScore = scoreChampion(legendary, null);
-    // Legendary should be 1.75x the Basic score
-    expect(legendaryScore).toBe(Math.round(275 * 1.75));
+    // Legendary should be 3.0x the Basic score
+    expect(legendaryScore).toBe(Math.round(275 * 3.0));
   });
 
   it("applies rarity multiplier for Rare", () => {
     const champ = makeChampion("RareMoki", "Rare", "3");
     const score = scoreChampion(champ, null);
-    expect(score).toBe(Math.round(275 * 1.25));
+    expect(score).toBe(Math.round(275 * 1.6));
   });
 
   it("applies rarity multiplier for Epic", () => {
     const champ = makeChampion("EpicMoki", "Epic", "4");
     const score = scoreChampion(champ, null);
-    expect(score).toBe(Math.round(275 * 1.5));
+    expect(score).toBe(Math.round(275 * 2.2));
   });
 
   it("adds scheme bonus for kills category", () => {

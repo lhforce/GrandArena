@@ -442,3 +442,16 @@
 - [x] Default sort by Signal Score descending
 - [x] Add last sold price and date to Supply Squeeze listings
 - [x] Add Signal Score badge to Supply Squeeze table
+
+## Lineup Builder Bug Fixes Round 15
+- [x] Show contest rules below contest title in Lineup Builder
+- [x] Fix optimizer picking Basic/Rare/Epic cards instead of Legendaries when Legendaries are available
+- [x] Fix first lineup missing scheme card entirely
+
+## Lineup Builder: Legendary Preference Rule
+- [x] Add hard pre-filter: if a Legendary version of a champion exists in the pool, ALWAYS use it — never pick a lower rarity of the same champion
+
+## Winning Lineups Bug Fixes
+- [x] Fix all champion cards showing "Unknown" name in Winning Lineups (reset 367 failed entries for re-identification)
+- [x] Add owned/need-to-buy indicator to cards in Winning Lineups (already existed, was hidden when identifiedChampions was empty)
+- [x] Fix formatting inconsistencies in Winning Lineups card display (handle unidentified cards with 'Pending ID' label)

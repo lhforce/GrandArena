@@ -275,6 +275,59 @@ export default function LineupBuilder() {
               <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-teal" />
               <span className="truncate">Build: {selectedContest.name}</span>
             </CardTitle>
+            {/* Contest rules summary below title */}
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {selectedContest.format && (
+                <Badge variant="outline" className="text-[10px] h-5">
+                  {selectedContest.format}
+                </Badge>
+              )}
+              {selectedContest.rarityRestriction && selectedContest.rarityRestriction !== "OPEN" && (
+                <Badge className={`text-[10px] h-5 ${
+                  selectedContest.rarityRestriction.includes("LEGENDARY") ? "bg-pink-500/20 text-pink-300 border-pink-500/30" :
+                  selectedContest.rarityRestriction.includes("EPIC") ? "bg-purple-500/20 text-purple-300 border-purple-500/30" :
+                  selectedContest.rarityRestriction.includes("RARE") ? "bg-green-500/20 text-green-300 border-green-500/30" :
+                  selectedContest.rarityRestriction.includes("COMMON") ? "bg-gray-500/20 text-gray-300 border-gray-500/30" :
+                  "bg-muted text-muted-foreground"
+                }`}>
+                  {selectedContest.rarityRestriction.replace(/_/g, " ")}
+                </Badge>
+              )}
+              {selectedContest.isOneOfEach && (
+                <Badge className="text-[10px] h-5 bg-blue-500/20 text-blue-300 border-blue-500/30">
+                  One of Each Rarity
+                </Badge>
+              )}
+              {selectedContest.isStarCap && (
+                <Badge className="text-[10px] h-5 bg-yellow-500/20 text-yellow-300 border-yellow-500/30">
+                  Star Cap
+                </Badge>
+              )}
+              {selectedContest.maxEntriesPerUser != null && (
+                <Badge variant="outline" className="text-[10px] h-5">
+                  Max {selectedContest.maxEntriesPerUser} {selectedContest.maxEntriesPerUser === 1 ? "entry" : "entries"}
+                </Badge>
+              )}
+              {selectedContest.entryFee != null && selectedContest.entryFee > 0 && (
+                <Badge variant="outline" className="text-[10px] h-5">
+                  {selectedContest.entryFee.toLocaleString()} gems/entry
+                </Badge>
+              )}
+              {selectedContest.prizePool != null && Number(selectedContest.prizePool) > 0 && (
+                <Badge className="text-[10px] h-5 bg-gold/20 text-gold border-gold/30">
+                  ${selectedContest.prizePool.toLocaleString()} prize
+                </Badge>
+              )}
+              {selectedContest.entries != null && selectedContest.maxEntries != null && selectedContest.maxEntries > 0 && (
+                <Badge variant="outline" className={`text-[10px] h-5 ${
+                  selectedContest.entries >= selectedContest.maxEntries ? "text-red-400 border-red-400/30" :
+                  selectedContest.entries / selectedContest.maxEntries >= 0.9 ? "text-orange-400 border-orange-400/30" :
+                  "text-muted-foreground"
+                }`}>
+                  {selectedContest.entries}/{selectedContest.maxEntries} entered
+                </Badge>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">

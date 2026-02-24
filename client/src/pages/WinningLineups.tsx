@@ -377,8 +377,10 @@ function LineupRow({ entry, ownedSet, isTop, priceMap }: { entry: LineupEntry; o
       {/* Card Images with names, owned/buy, and pricing */}
       <div className="flex flex-wrap gap-4 mb-2">
         {cardImages.map((url, i) => {
-          const champ = champions[i];
-          const isSchemeCard = i === cardImages.length - 1 && !champ;
+          // The last image is always the scheme card (5th card = scheme)
+          const isSchemeCard = i === cardImages.length - 1 && cardImages.length === 5;
+          // Map champion data: champions array has 4 entries (indices 0-3), scheme card is index 4
+          const champ = !isSchemeCard ? champions[i] : undefined;
           const isOwned = champ ? ownedSet.has(`${champ.championTokenId}:${champ.rarity}`) : false;
           const rarityLower = (champ?.rarity ?? "basic").toLowerCase();
           const champPrices = champ ? priceMap[champ.name] : null;
@@ -393,6 +395,7 @@ function LineupRow({ entry, ownedSet, isTop, priceMap }: { entry: LineupEntry; o
               rarityLower={rarityLower}
               schemeName={entry.identifiedScheme}
               champPrices={champPrices ?? null}
+              isUnidentified={!isSchemeCard && !champ}
             />
           );
         })}
@@ -419,6 +422,7 @@ function ChampionCardSlot({
   rarityLower,
   schemeName,
   champPrices,
+  isUnidentified = false,
 }: {
   url: string;
   champ: ChampionCard | undefined;
@@ -427,6 +431,7 @@ function ChampionCardSlot({
   rarityLower: string;
   schemeName: string | null;
   champPrices: Record<string, number | null> | null;
+  isUnidentified?: boolean;
 }) {
   // Calculate marketplace price and crafting cost for this specific rarity
   const marketPrice = champ && champPrices ? champPrices[champ.rarity] : null;
@@ -455,6 +460,11 @@ function ChampionCardSlot({
       {isSchemeCard && (
         <div className="text-xs font-semibold px-2 py-0.5 rounded text-gold bg-gold/10">
           SCHEME
+        </div>
+      )}
+      {isUnidentified && (
+        <div className="text-xs font-semibold px-2 py-0.5 rounded text-muted-foreground bg-muted/20">
+          Pending ID
         </div>
       )}
 
@@ -511,9 +521,9 @@ function ChampionCardSlot({
 
       {/* Name underneath */}
       <span className={`text-xs font-medium text-center max-w-[100px] leading-tight ${
-        isSchemeCard ? "text-gold" : `text-rarity-${rarityLower}`
+        isSchemeCard ? "text-gold" : isUnidentified ? "text-muted-foreground italic" : `text-rarity-${rarityLower}`
       }`}>
-        {champ?.name ?? schemeName ?? "Unknown"}
+        {champ?.name ?? schemeName ?? (isUnidentified ? "Pending ID" : "Unknown")}
       </span>
 
       {/* Rarity badge removed — was showing as colored bar below card */}

@@ -1,0 +1,50 @@
+{
+  "query": "SELECT le.id, c.name as contestName, le.rank, le.identifiedChampions, le.identifiedScheme, le.aiConfidence FROM leaderboard_entries le JOIN contests c ON le.contestId = c.id WHERE c.name LIKE '%Buff Luck%' OR c.name LIKE '%Island Field%' LIMIT 5",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute SELECT le.id, c.name as contestName, le.rank, le.identifiedChampions, le.identifiedScheme, le.aiConfidence FROM leaderboard_entries le JOIN contests c ON le.contestId = c.id WHERE c.name LIKE '%Buff Luck%' OR c.name LIKE '%Island Field%' LIMIT 5",
+  "rows": [
+    {
+      "id": "4453",
+      "contestName": "50/50 Open Daily Buff Luck",
+      "rank": "1",
+      "identifiedChampions": "[]",
+      "identifiedScheme": "NULL",
+      "aiConfidence": "0.00"
+    },
+    {
+      "id": "4454",
+      "contestName": "50/50 Open Daily Buff Luck",
+      "rank": "2",
+      "identifiedChampions": "[]",
+      "identifiedScheme": "NULL",
+      "aiConfidence": "0.00"
+    },
+    {
+      "id": "4455",
+      "contestName": "50/50 Open Daily Buff Luck",
+      "rank": "3",
+      "identifiedChampions": "[]",
+      "identifiedScheme": "NULL",
+      "aiConfidence": "0.00"
+    },
+    {
+      "id": "4456",
+      "contestName": "50/50 Open Daily Buff Luck",
+      "rank": "4",
+      "identifiedChampions": "[]",
+      "identifiedScheme": "NULL",
+      "aiConfidence": "0.00"
+    },
+    {
+      "id": "4457",
+      "contestName": "50/50 Open Daily Buff Luck",
+      "rank": "5",
+      "identifiedChampions": "[]",
+      "identifiedScheme": "NULL",
+      "aiConfidence": "0.00"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tcontestName\trank\tidentifiedChampions\tidentifiedScheme\taiConfidence\n4453\t50/50 Open Daily Buff Luck\t1\t[]\tNULL\t0.00\n4454\t50/50 Open Daily Buff Luck\t2\t[]\tNULL\t0.00\n4455\t50/50 Open Daily Buff Luck\t3\t[]\tNULL\t0.00\n4456\t50/50 Open Daily Buff Luck\t4\t[]\tNULL\t0.00\n4457\t50/50 Open Daily Buff Luck\t5\t[]\tNULL\t0.00\n",
+  "stderr": "",
+  "execution_time_ms": 58
+}
