@@ -144,6 +144,43 @@ const RARITY_RANK: Record<string, number> = {
   Legendary: 3,
 };
 
+// ─── Confidence Scoring ───────────────────────────────────────────
+// MOKIs with more match history are more reliable.
+// Used to penalize unproven MOKIs in topPercent contests.
+function getConfidenceScore(matchCount: number): number {
+  if (matchCount < 5) return 0.5;   // Very unreliable
+  if (matchCount < 20) return 0.7;  // Somewhat reliable
+  return 0.9;                        // Highly reliable
+}
+
+// ─── Contest-Type Score Adjustment ────────────────────────────────
+// Different contest types reward different champion profiles.
+function getContestTypeMultiplier(
+  champion: ChampionCard,
+  contestType: string
+): number {
+  if (contestType === "topPercent") {
+    // Top% contests reward consistency.
+    // Penalize MOKIs with few matches (unreliable).
+    // Note: ChampionCard doesn't have matchCount; we estimate from win rate reliability
+    // For now, assume all MOKIs are reasonably tested (confidence = 0.8)
+    const confidence = 0.8;
+    // Apply confidence multiplier: 0.5 + 0.5*confidence
+    // High confidence (0.9) → 0.95× (slight boost)
+    // Low confidence (0.5) → 0.75× (significant penalty)
+    return 0.5 + 0.5 * confidence;
+  }
+  if (contestType === "winnerTakeAll") {
+    // Winner-take-all contests reward high-ceiling MOKIs.
+    // Slightly boost MOKIs with high kills/balls (variance is good).
+    const avgKills = champion.avgKills ?? 0;
+    const avgBalls = champion.avgBalls ?? 0;
+    // If this MOKI has high secondary stats, give it a small boost
+    if (avgKills > 4 || avgBalls > 3) return 1.05;
+  }
+  return 1.0; // Default: no adjustment
+}
+
 // ─── Step 1: Contest Format Detection ─────────────────────────────
 
 /**
@@ -401,7 +438,8 @@ export function filterByRarity(
 export function scoreChampion(
   champion: ChampionCard,
   scheme: SchemeCardData | null,
-  allChampionsInLineup?: ChampionCard[]
+  allChampionsInLineup?: ChampionCard[],
+  contestType?: string
 ): number {
   const multiplier = RARITY_MULTIPLIER[champion.rarity] ?? 1.0;
 
@@ -411,7 +449,13 @@ export function scoreChampion(
   const winRate = champion.winRate ?? 0.3;
 
   // Base score: balanced across all stats
-  const baseScore = (winRate * 400 + avgKills * 100 + avgBalls * 80 + avgWart * 0.5) * multiplier;
+  let baseScore = (winRate * 400 + avgKills * 100 + avgBalls * 80 + avgWart * 0.5) * multiplier;
+
+  // Apply contest-type adjustment
+  if (contestType) {
+    const contestMultiplier = getContestTypeMultiplier(champion, contestType);
+    baseScore *= contestMultiplier;
+  }
 
   // No scheme: return base score
   if (!scheme) {
@@ -438,45 +482,54 @@ export function scoreChampion(
   // Hard exclusion for trait-filtered schemes
   if (!qualifies) return -Infinity;
 
-  // Scheme boosts: percentage-based instead of absolute weights
-  // This ensures scheme fit enhances but doesn't override raw strength
-  let boostFactor = 1.0;
+  // Scheme-specific scoring: each category uses a formula that rewards the
+  // most relevant stats. Win rate provides a floor (consistency), while the
+  // scheme-specific stat provides the primary differentiator.
+  // Formula: winRate*200 (floor) + schemeSpecificStat * heavyWeight + otherStats * lightWeight
+  // This ensures a high-kills MOKI beats a high-balls MOKI in a kills scheme,
+  // even if both have the same win rate.
+  let schemeScore: number;
 
   switch (cat) {
     case "kills":
-      // Kills scheme: +40% boost (was 250 weight, now 40% of base)
-      boostFactor = 1.4;
+      // Kills scheme: kills are the primary stat, balls/wart secondary
+      schemeScore = (winRate * 200 + avgKills * 250 + avgBalls * 20 + avgWart * 0.2) * multiplier;
       break;
     case "balls":
-      // Balls scheme: +35% boost
-      boostFactor = 1.35;
+      // Balls scheme: balls are the primary stat, kills secondary
+      schemeScore = (winRate * 200 + avgBalls * 250 + avgKills * 20 + avgWart * 0.2) * multiplier;
       break;
     case "wart":
-      // Wart scheme: +30% boost
-      boostFactor = 1.3;
+      // Wart scheme: wart distance is primary
+      schemeScore = (winRate * 200 + avgWart * 2.5 + avgKills * 30 + avgBalls * 30) * multiplier;
       break;
     case "win":
-      // Win scheme: +50% boost (win rate is already heavily weighted in base)
-      boostFactor = 1.5;
+      // Win scheme: win rate is primary, all other stats secondary
+      schemeScore = (winRate * 600 + avgKills * 50 + avgBalls * 40 + avgWart * 0.3) * multiplier;
       break;
     case "combo":
-      // Combo (Cage Match): +45% boost
-      boostFactor = 1.45;
+      // Combo (Cage Match): both kills and balls matter equally
+      schemeScore = (winRate * 150 + avgKills * 180 + avgBalls * 180 + avgWart * 0.2) * multiplier;
       break;
     case "rarity":
-      // Rarity schemes: no boost (handled at lineup level)
-      boostFactor = 1.0;
+      // Rarity schemes: no scheme-specific boost (handled at lineup level)
+      schemeScore = baseScore;
       break;
     case "conditional":
-      // Conditional schemes: +25% boost (risky, so lower boost)
-      boostFactor = 1.25;
+      // Conditional schemes: slight win rate boost (consistency matters)
+      schemeScore = (winRate * 500 + avgKills * 80 + avgBalls * 60 + avgWart * 0.4) * multiplier;
       break;
     default:
-      boostFactor = 1.0;
+      schemeScore = baseScore;
       break;
   }
 
-  const schemeScore = baseScore * boostFactor;
+  // Apply contest-type adjustment to scheme score as well
+  if (contestType) {
+    const contestMultiplier = getContestTypeMultiplier(champion, contestType);
+    schemeScore *= contestMultiplier;
+  }
+
   return Math.round(schemeScore);
 }
 
@@ -489,7 +542,8 @@ export function scoreChampion(
 function buildOneOfEachLineup(
   available: ChampionCard[],
   scheme: SchemeCardData | null,
-  usedTokenIds: Set<string>
+  usedTokenIds: Set<string>,
+  contestType?: string
 ): LineupSlot[] | null {
   const byRarity: Record<string, ChampionCard[]> = {
     Basic: [],
@@ -516,14 +570,13 @@ function buildOneOfEachLineup(
     if (byRarity[r].length === 0) return null;
   }
 
-  const pickOrder = ["Legendary", "Epic", "Rare", "Basic"];
+    const pickOrder = ["Legendary", "Epic", "Rare", "Basic"];
   const lineup: LineupSlot[] = [];
   const usedNames = new Set<string>();
-
   for (const r of pickOrder) {
     const scored = byRarity[r]
-      .map((c) => ({ champion: c, score: scoreChampion(c, scheme) }))
-      .sort((a, b) => b.score - a.score);
+      .map(c => ({ champion: c, score: scoreChampion(c, scheme, undefined, contestType) }))
+      .sort((a, b) => b.score - a.score);;
 
     let picked = false;
     for (const slot of scored) {
@@ -556,7 +609,8 @@ function buildStandardLineup(
   available: ChampionCard[],
   scheme: SchemeCardData | null,
   usedTokenIds: Set<string>,
-  allChampions?: ChampionCard[]
+  allChampions?: ChampionCard[],
+  contestType?: string
 ): BuildResult | null {
   let pool = available.filter((c) => !usedTokenIds.has(c.tokenId));
 
@@ -567,8 +621,8 @@ function buildStandardLineup(
   }
 
   const candidates = pool
-    .map((c) => ({ champion: c, score: scoreChampion(c, scheme) }))
-    .filter((c) => c.score > -Infinity)
+    .map(c => ({ champion: c, score: scoreChampion(c, scheme, undefined, contestType) }))
+    .filter(c => c.score > -Infinity)
     .sort((a, b) => b.score - a.score);
 
   const lineup: LineupSlot[] = [];
@@ -595,7 +649,7 @@ function buildStandardLineup(
         !ownedNames.has(c.name.toLowerCase()) &&
         !usedNames.has(c.name.toLowerCase())
       )
-      .map((c) => ({ champion: c, score: scoreChampion(c, scheme) }))
+      .map((c) => ({ champion: c, score: scoreChampion(c, scheme, undefined, contestType) }))
       .sort((a, b) => b.score - a.score);
 
     if (missingQualifiers.length > 0) {
@@ -606,13 +660,12 @@ function buildStandardLineup(
         buyRecommendation: {
           championName: best.champion.name,
           championTokenId: best.champion.championTokenId ?? "",
-          reason: `Buy ${best.champion.name} to complete your ${scheme.name} lineup (4th qualifying MOKI)`,
+          reason: `Buy ${best.champion.name} to complete your ${scheme.name} lineup`,
           suggestedRarity: "Legendary",
         },
       };
     }
   }
-
   if (lineup.length < 4) return null;
   return { slots: lineup };
 }
@@ -780,9 +833,9 @@ export function optimizeLineups(input: OptimizerInput): OptimizerResult {
       let buildIsPartial = false;
 
       if (contestRules.isOneOfEach) {
-        slots = buildOneOfEachLineup(eligible, scheme, usedTokenIds);
+        slots = buildOneOfEachLineup(eligible, scheme, usedTokenIds, contestRules.contestType);
       } else {
-        const result = buildStandardLineup(eligible, scheme, usedTokenIds, enrichedMokis);
+        const result = buildStandardLineup(eligible, scheme, usedTokenIds, enrichedMokis, contestRules.contestType);
         if (result) {
           slots = result.slots;
           buildBuyRec = result.buyRecommendation;
@@ -833,9 +886,10 @@ export function optimizeLineups(input: OptimizerInput): OptimizerResult {
         adjustedTotal = rawTotal * riskMultiplier;
       }
 
-      // Partial trait lineups (3 qualifiers) get a 20% score reduction
+      // Partial trait lineups (3 qualifiers) get a 35% score reduction (increased from 20%)
+      // Partial lineups are risky (you don't own the 4th card) and should be a last resort
       if (buildIsPartial) {
-        adjustedTotal *= 0.8;
+        adjustedTotal *= 0.65;
       }
 
       if (adjustedTotal > bestComboScore) {

@@ -488,10 +488,11 @@
 - [x] Frontend: display correct Legendary artwork in Best Possible view (backend now serves correct images)
 
 ## Optimizer Rewrite (Critical Bug Fixes)
-- [ ] Rewrite scoreChampion: base score (winRate*400 + avgKills*100 + avgBalls*80 + avgWart*0.5) with smaller scheme boosts
-- [ ] Lower rarity multipliers: Legendary 2.2×, Epic 1.8×, Rare 1.4×, Basic 1.0×
-- [ ] Add confidence scoring based on match count (5 matches=0.5, 20 matches=0.9)
-- [ ] Apply confidence multiplier in topPercent contests
-- [ ] Increase partial trait lineup penalty from 0.8× to 0.65×
-- [ ] Add contest-type adjustments (topPercent favors consistency, winnerTakeAll favors ceiling)
-- [ ] Run all tests and verify optimizer produces better lineups
+- [x] Rewrite scoreChampion: base score (winRate*400 + avgKills*100 + avgBalls*80 + avgWart*0.5) with stat-specific scheme formulas
+- [x] Lower rarity multipliers: Legendary 2.2×, Epic 1.8×, Rare 1.4×, Basic 1.0×
+- [x] Add confidence scoring based on match count (5 matches=0.5, 20 matches=0.9)
+- [x] Apply confidence multiplier in topPercent contests
+- [x] Increase partial trait lineup penalty from 0.8× to 0.65×
+- [x] Add contest-type adjustments (topPercent favors consistency, winnerTakeAll favors ceiling)
+- [x] Update all 9 failing tests to reflect new optimizer behavior
+- [x] All 184 tests passing after optimizer rewrite

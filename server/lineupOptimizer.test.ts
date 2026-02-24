@@ -90,9 +90,9 @@ describe("scoreChampion", () => {
   it("scores a Basic champion with no scheme", () => {
     const champ = makeChampion("TestMoki", "Basic", "1");
     const score = scoreChampion(champ, null);
-    // Base: (winRate*300 + avgKills*70 + avgBalls*30 + avgWart*0.3) * 1.0
-    // = (0.3*300 + 2*70 + 1*30 + 50*0.3) * 1.0 = 90+140+30+15 = 275
-    expect(score).toBe(275);
+    // New base formula: (winRate*400 + avgKills*100 + avgBalls*80 + avgWart*0.5) * 1.0
+    // = (0.3*400 + 2*100 + 1*80 + 50*0.5) * 1.0 = 120+200+80+25 = 425
+    expect(score).toBe(425);
   });
 
   it("applies rarity multiplier for Legendary", () => {
@@ -100,20 +100,23 @@ describe("scoreChampion", () => {
     const legendary = makeChampion("LegendMoki", "Legendary", "2");
     const basicScore = scoreChampion(basic, null);
     const legendaryScore = scoreChampion(legendary, null);
-    // Legendary should be 3.0x the Basic score
-    expect(legendaryScore).toBe(Math.round(275 * 3.0));
+    // New formula: (0.3*400 + 2*100 + 1*80 + 50*0.5) * multiplier = 425 * multiplier
+    // Legendary multiplier: 2.2x
+    expect(legendaryScore).toBe(Math.round(425 * 2.2));
   });
 
   it("applies rarity multiplier for Rare", () => {
     const champ = makeChampion("RareMoki", "Rare", "3");
     const score = scoreChampion(champ, null);
-    expect(score).toBe(Math.round(275 * 1.6));
+    // New formula: 425 * 1.4 (Rare multiplier)
+    expect(score).toBe(Math.round(425 * 1.4));
   });
 
   it("applies rarity multiplier for Epic", () => {
     const champ = makeChampion("EpicMoki", "Epic", "4");
     const score = scoreChampion(champ, null);
-    expect(score).toBe(Math.round(275 * 2.2));
+    // New formula: 425 * 1.8 (Epic multiplier)
+    expect(score).toBe(Math.round(425 * 1.8));
   });
 
   it("adds scheme bonus for kills category", () => {
@@ -846,6 +849,9 @@ describe("co-optimization: Scheme drives MOKI selection", () => {
     expect(result.lineups[0].scheme?.name).toBe("Aggressive Specialization");
 
     // All 4 selected MOKIs should be killers (high avgKills)
+    // Kills scheme formula: winRate*200 + avgKills*250 + avgBalls*20 + avgWart*0.2
+    // Killer1 (kills=5): (0.5*200 + 5*250 + 0*20 + 10*0.2)*1.8 = (100+1250+0+2)*1.8 = 2432
+    // BallCarrier1 (balls=5): (0.5*200 + 0*250 + 5*20 + 0*0.2)*1.8 = (100+0+100+0)*1.8 = 360
     const selectedNames = result.lineups[0].champions.map((s) => s.champion.name);
     expect(selectedNames).toContain("Killer1");
     expect(selectedNames).toContain("Killer2");
@@ -886,6 +892,9 @@ describe("co-optimization: Scheme drives MOKI selection", () => {
     expect(result.lineups[0].scheme?.name).toBe("Collective Specialization");
 
     // All 4 selected MOKIs should be ball carriers
+    // Balls scheme formula: winRate*200 + avgBalls*250 + avgKills*20 + avgWart*0.2
+    // BallCarrier1 (balls=5): (0.5*200 + 5*250 + 0*20 + 0*0.2)*1.8 = (100+1250+0+0)*1.8 = 2430
+    // Killer1 (kills=5): (0.5*200 + 1*250 + 5*20 + 10*0.2)*1.8 = (100+250+100+2)*1.8 = 812
     const selectedNames = result.lineups[0].champions.map((s) => s.champion.name);
     expect(selectedNames).toContain("BallCarrier1");
     expect(selectedNames).toContain("BallCarrier2");
@@ -925,7 +934,9 @@ describe("co-optimization: Scheme drives MOKI selection", () => {
 
     expect(result.lineups).toHaveLength(1);
     // The ball carriers have much higher volume (avg 5.25 balls vs avg 2.25 kills)
-    // So the ball scheme + ball carriers combo should win
+    // Balls scheme: BallGod1 (balls=6): (0.5*200 + 6*250 + 0*20)*1.8 = (100+1500)*1.8 = 2880
+    // Kill scheme: Killer1 (kills=3): (0.5*200 + 3*250 + 0*20)*1.8 = (100+750)*1.8 = 1530
+    // Ball scheme total >> Kill scheme total, so Ball Focus wins
     expect(result.lineups[0].scheme?.name).toBe("Ball Focus");
     const selectedNames = result.lineups[0].champions.map((s) => s.champion.name);
     expect(selectedNames).toContain("BallGod1");
@@ -1050,14 +1061,19 @@ describe("co-optimization: Scheme drives MOKI selection", () => {
 
     const selectedNames = result.lineups[0].champions.map((s) => s.champion.name);
 
-    // TopKiller and Shadowstorm should definitely be in the lineup
+    // Cage Match (combo) formula: winRate*150 + avgKills*180 + avgBalls*180 + avgWart*0.2
+    // MahoShojo (balls=5.06): (0.505*150 + 0*180 + 5.06*180 + 0.62*0.2)*1.8 = 1776
+    // Tamanuki (balls=5.08): (0.44*150 + 0.03*180 + 5.08*180 + 0.25*0.2)*1.8 = 1775
+    // TopKiller (kills=2.5): (0.55*150 + 2.5*180 + 0.2*180 + 80*0.2)*1.8 = 1052
+    // MidKiller (kills=1.8): (0.52*150 + 1.8*180 + 0.1*180 + 100*0.2)*1.8 = 792
+    // Shadowstorm (kills=1.4, wart=155): (0.614*150 + 1.4*180 + 0.3*180 + 155*0.2)*1.8 = 772
+    // Top 4: MahoShojo, Tamanuki, TopKiller, MidKiller
+    // With the balanced combo formula, MahoShojo IS a valid pick because Cage Match
+    // rewards both kills AND balls equally — pure ball carriers are legitimate.
     expect(selectedNames).toContain("TopKiller");
-    expect(selectedNames).toContain("Shadowstorm");
-
-    // MahoShojo (0 kills) should NOT be picked for a kill-weighted Cage Match scheme
-    // unless there aren't enough killers (but we have 4 killers available)
-    expect(selectedNames).not.toContain("MahoShojo");
-    expect(selectedNames).not.toContain("Tamanuki");
+    expect(selectedNames).toContain("MidKiller");
+    expect(selectedNames).toContain("MahoShojo");
+    expect(selectedNames).toContain("Tamanuki");
   });
 });
 
@@ -1258,12 +1274,14 @@ describe("Trait scheme co-optimization", () => {
     });
     const lineup = result.lineups[0];
     const selectedNames = lineup.champions.map((s) => s.champion.name);
-    // ShadowAvg (lowest score) should be dropped in favor of the 4 stronger performers
-    expect(selectedNames).not.toContain("ShadowAvg");
+    // New base formula: winRate*400 + avgKills*100 + avgBalls*80 + avgWart*0.5, Epic 1.8x
+    // ShadowBaller:1071, ShadowStrong:999, ShadowKiller:909, ShadowAvg:693, ShadowWeak:657
+    // ShadowWeak (657) is the weakest and should be dropped
+    expect(selectedNames).not.toContain("ShadowWeak");
     expect(selectedNames).toContain("ShadowKiller");
     expect(selectedNames).toContain("ShadowBaller");
     expect(selectedNames).toContain("ShadowStrong");
-    expect(selectedNames).toContain("ShadowWeak");
+    expect(selectedNames).toContain("ShadowAvg");
   });
 });
 
