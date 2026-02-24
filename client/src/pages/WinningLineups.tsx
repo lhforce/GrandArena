@@ -82,9 +82,10 @@ function formatContestRules(contest: any): string[] {
   }
   if (contest.isOneOfEach) rules.push("One-Of-Each");
   if (contest.isStarCap) rules.push("Star Cap");
-  if (contest.entryFee) rules.push(`Entry: ${contest.entryFee} GEMs (${gemsToUSD(contest.entryFee)})`);
+  if (contest.entryFee) rules.push(`Entry: ${contest.entryFee} gems`);
   if (contest.prizePool && Number(contest.prizePool) > 0) {
-    rules.push(`Prize Pool: ${Number(contest.prizePool).toLocaleString()} GEMs (${gemsToUSD(Number(contest.prizePool))})`);
+    // prizePool from GA API is in USD
+    rules.push(`Prize Pool: $${Number(contest.prizePool).toFixed(2)} USD`);
   }
   return rules;
 }

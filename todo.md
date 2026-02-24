@@ -375,3 +375,7 @@
 
 ## Winning Lineups Payout Display Fix
 - [x] Payout from GA API is in USD — display as "$X.XX" only (e.g. "$4.38"), no gem conversion
+
+## Winning Lineups Prize Pool Display Fix
+- [x] Prize Pool now shows "$262.50 USD" only (was "262.5 GEMs ($2.63)")
+- [x] Entry fee now shows "300 gems" only (removed USD conversion)
