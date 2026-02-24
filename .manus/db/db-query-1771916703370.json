@@ -1,0 +1,16 @@
+{
+  "query": "SHOW TABLES LIKE '%card%';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute SHOW TABLES LIKE '%card%';",
+  "rows": [
+    {
+      "Tables_in_Gf2jRyPKPCBM4pbKAanJar (%card%)": "card_lockups"
+    },
+    {
+      "Tables_in_Gf2jRyPKPCBM4pbKAanJar (%card%)": "user_cards"
+    }
+  ],
+  "messages": [],
+  "stdout": "Tables_in_Gf2jRyPKPCBM4pbKAanJar (%card%)\ncard_lockups\nuser_cards\n",
+  "stderr": "",
+  "execution_time_ms": 52
+}

@@ -611,6 +611,7 @@ async function savePriceData(
           totalListings: data.totalListings,
           outlierCount: data.outlierCount,
           allPricesJson: JSON.stringify(data.listings),
+          imageUrl: data.imageUrl ?? null,
         })
         .onDuplicateKeyUpdate({
           set: {
@@ -623,6 +624,7 @@ async function savePriceData(
             totalListings: data.totalListings,
             outlierCount: data.outlierCount,
             allPricesJson: JSON.stringify(data.listings),
+            imageUrl: data.imageUrl ?? null,
             fetchedAt: new Date(),
           },
         });

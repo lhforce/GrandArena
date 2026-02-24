@@ -1,0 +1,1 @@
+ALTER TABLE `marketplace_prices` ADD `imageUrl` text;

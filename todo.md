@@ -482,3 +482,7 @@
 ## Bug Fixes Round 13
 - [x] Fix rarity label display bug: My Cards view shows "Legendary" text instead of actual owned card rarities
 - [x] Best Possible view should clearly indicate cards are hypothetical Legendary versions (e.g., badge/note)
+- [ ] Fix backend My Cards lineup: champions are returned with Legendary rarity instead of actual owned card rarity
+- [x] Add imageUrl column to marketplace_prices table and populate it during price scraping
+- [x] Use marketplace_prices Legendary imageUrl in Best Possible lineup backend response
+- [x] Frontend: display correct Legendary artwork in Best Possible view (backend now serves correct images)

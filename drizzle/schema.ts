@@ -324,6 +324,7 @@ export const marketplacePrices = mysqlTable("marketplace_prices", {
   totalListings: int("totalListings").default(0), // Including outliers
   outlierCount: int("outlierCount").default(0), // Listings >3x median
   allPricesJson: text("allPricesJson"), // JSON array of all listing prices with outlier flags
+  imageUrl: text("imageUrl"), // Card artwork URL at this rarity (from marketplace listing)
   fetchedAt: timestamp("fetchedAt").defaultNow().notNull(),
 }, (table) => [
   index("idx_mp_champion").on(table.championName),

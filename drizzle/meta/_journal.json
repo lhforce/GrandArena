@@ -43,6 +43,13 @@
       "when": 1771908745466,
       "tag": "0005_curly_serpent_society",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1771917422935,
+      "tag": "0006_soft_iron_man",
+      "breakpoints": true
     }
   ]
 }

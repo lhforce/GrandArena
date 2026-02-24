@@ -1,0 +1,26 @@
+{
+  "query": "SELECT rarity, COUNT(*) as count FROM user_cards WHERE cardType = 'MOKI' GROUP BY rarity;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4F6MNPRFAaiWWjt.75e1a867dee7 --database Gf2jRyPKPCBM4pbKAanJar --execute SELECT rarity, COUNT(*) as count FROM user_cards WHERE cardType = 'MOKI' GROUP BY rarity;",
+  "rows": [
+    {
+      "rarity": "Legendary",
+      "count": "84"
+    },
+    {
+      "rarity": "Rare",
+      "count": "306"
+    },
+    {
+      "rarity": "Epic",
+      "count": "121"
+    },
+    {
+      "rarity": "Basic",
+      "count": "410"
+    }
+  ],
+  "messages": [],
+  "stdout": "rarity\tcount\nLegendary\t84\nRare\t306\nEpic\t121\nBasic\t410\n",
+  "stderr": "",
+  "execution_time_ms": 56
+}

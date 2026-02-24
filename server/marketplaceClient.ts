@@ -34,6 +34,7 @@ export interface ListingInfo {
   priceUsd: number;
   paymentToken: string;
   isOutlier: boolean;
+  imageUrl?: string | null;
 }
 
 export interface MarketplacePriceData {
@@ -48,6 +49,7 @@ export interface MarketplacePriceData {
   totalListings: number;
   outlierCount: number;
   listings: ListingInfo[];
+  imageUrl?: string | null; // Card artwork URL at this rarity (from floor listing)
 }
 
 // ─── GraphQL Client ─────────────────────────────────────────────────
@@ -385,6 +387,7 @@ export async function fetchListings(
       results {
         tokenId
         name
+        image
         order {
           currentPrice
           paymentToken
@@ -399,6 +402,7 @@ export async function fetchListings(
       results: Array<{
         tokenId: string;
         name?: string;
+        image?: string | null;
         order: { currentPrice: string; paymentToken: string } | null;
       }>;
     };
@@ -426,6 +430,7 @@ export async function fetchListings(
       priceUsd,
       paymentToken: isWeth ? "WETH" : "RON",
       isOutlier: false,
+      imageUrl: token.image ?? null,
     });
   }
 
@@ -456,6 +461,9 @@ export async function fetchMarketplacePrice(
   const buyoutCostRon = buyable.reduce((sum, l) => sum + l.priceRon, 0) || null;
   const buyoutCostUsd = buyoutCostRon !== null ? buyoutCostRon * rates.ronUsd : null;
 
+  // Use the image URL from the cheapest non-outlier listing (floor card artwork)
+  const floorImageUrl = buyable.length > 0 ? (buyable[0].imageUrl ?? null) : (listings[0]?.imageUrl ?? null);
+
   return {
     championName,
     rarity,
@@ -468,6 +476,7 @@ export async function fetchMarketplacePrice(
     totalListings: listings.length,
     outlierCount: outliers.length,
     listings,
+    imageUrl: floorImageUrl,
   };
 }
 

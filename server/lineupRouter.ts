@@ -15,6 +15,7 @@ import {
   gemSpendingLog,
   contests,
   championStats,
+  marketplacePrices,
 } from "../drizzle/schema";
 import { syncWalletInventory, getUserInventory, getAvailableCards } from "./walletSync";
 import {
@@ -399,6 +400,29 @@ export const lineupRouter = router({
           rarity: forcedRarity,
         }));
         console.log(`[Optimizer] ${rarityRestriction}: forced all ${allGameChampions.length} champions to ${forcedRarity} rarity`);
+
+        // ── Enrich imageUrl from marketplace_prices for the forced rarity ──
+        // game-data.json only has one image per champion (often Basic/Rare artwork).
+        // After forcing rarity, look up the correct artwork from marketplace_prices.
+        try {
+          const mpImages = await db
+            .select({ championName: marketplacePrices.championName, imageUrl: marketplacePrices.imageUrl })
+            .from(marketplacePrices)
+            .where(eq(marketplacePrices.rarity, forcedRarity));
+          const mpImageMap = new Map<string, string | null>();
+          for (const row of mpImages) {
+            if (row.imageUrl) mpImageMap.set(row.championName.toLowerCase(), row.imageUrl);
+          }
+          if (mpImageMap.size > 0) {
+            allGameChampions = allGameChampions.map((ch) => ({
+              ...ch,
+              imageUrl: mpImageMap.get(ch.name.toLowerCase()) ?? ch.imageUrl,
+            }));
+            console.log(`[Optimizer] Enriched ${mpImageMap.size} champion images from marketplace_prices (${forcedRarity})`);
+          }
+        } catch (err) {
+          console.warn("[Optimizer] Failed to enrich champion images from marketplace_prices:", (err as Error).message);
+        }
       }
 
       // ── Run optimizer TWICE: owned cards + best possible ──
