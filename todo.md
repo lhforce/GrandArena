@@ -374,4 +374,4 @@
 - [x] Fix payout amount display — payout from GA API is in RON, now shows correctly as "X.XX RON" (was incorrectly converted to USD)
 
 ## Winning Lineups Payout Display Fix
-- [x] Payout from GA API is in USD — display as "$X.XX (Y gems)" e.g. "$4.38 (438 gems)" since 100 gems = $1 USD
+- [x] Payout from GA API is in USD — display as "$X.XX" only (e.g. "$4.38"), no gem conversion
