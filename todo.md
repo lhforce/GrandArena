@@ -412,3 +412,9 @@
 - [x] Flag as "Supply Squeeze" opportunities alongside crafting arbitrage
 - [x] Add Supply Squeeze section to Card Arbitrage page
 - [x] Add Telegram alerts for supply squeeze opportunities
+
+## Bug Fix: RON/USD Exchange Rate
+- [x] Fix RON/USD rate — Ronin GraphQL API returns stale/wrong rate ($0.91), correct rate is $0.096603
+- [x] Update exchange rate source to use CoinGecko or hardcoded fallback with correct rate
+- [x] Retrigger arbitrage scan with corrected rate
+- [x] Verify recalculated USD prices on Card Arbitrage page

@@ -74,58 +74,68 @@ const RATE_CACHE_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
  * Fetch RON and WETH → USD exchange rates.
- * Uses Ronin Marketplace GraphQL first, falls back to CoinGecko.
+ *
+ * NOTE: The Ronin Marketplace GraphQL `exchangeRate.ron.usd` field returns the price
+ * of the Ronin ERC-20 token on Ethereum mainnet (~$0.91), NOT the Ronin sidechain
+ * native RON token (~$0.096). We use CoinGecko as the primary source for accuracy.
+ * The Ronin GraphQL API is only used for WETH price.
  */
 export async function getExchangeRates(): Promise<ExchangeRates> {
   if (cachedRates && Date.now() - cachedRates.fetchedAt < RATE_CACHE_MS) {
     return cachedRates;
   }
 
-  // Try Ronin Marketplace exchange rate query
-  try {
-    const data = (await gqlFetch(`
-      query GetExchangeRate {
-        exchangeRate {
-          eth { usd }
-          ron { usd }
-        }
-      }
-    `)) as { exchangeRate: { eth: { usd: string }; ron: { usd: string } } };
+  let ronUsd = 0;
+  let wethUsd = 0;
 
-    if (data?.exchangeRate) {
-      const ronUsd = parseFloat(data.exchangeRate.ron?.usd || "0");
-      const wethUsd = parseFloat(data.exchangeRate.eth?.usd || "0");
-      if (ronUsd > 0 && wethUsd > 0) {
-        cachedRates = { ronUsd, wethUsd, fetchedAt: Date.now() };
-        console.log(`[Marketplace] Rates: RON=$${ronUsd.toFixed(4)}, WETH=$${wethUsd.toFixed(2)}`);
-        return cachedRates;
-      }
-    }
-  } catch (err) {
-    console.warn("[Marketplace] Ronin exchange rate failed, trying CoinGecko:", (err as Error).message);
-  }
-
-  // Fallback to CoinGecko
+  // Primary: CoinGecko for RON (axie-infinity-ronin-sidechain native token)
   try {
     const resp = await fetch(
       "https://api.coingecko.com/api/v3/simple/price?ids=ronin,ethereum&vs_currencies=usd",
       { headers: { Accept: "application/json" } }
     );
     const data = (await resp.json()) as { ronin?: { usd: number }; ethereum?: { usd: number } };
-    const ronUsd = data?.ronin?.usd || 0;
-    const wethUsd = data?.ethereum?.usd || 0;
-    if (ronUsd > 0 || wethUsd > 0) {
-      cachedRates = { ronUsd: ronUsd || 0.5, wethUsd: wethUsd || 2500, fetchedAt: Date.now() };
-      console.log(`[Marketplace] CoinGecko rates: RON=$${cachedRates.ronUsd.toFixed(4)}, WETH=$${cachedRates.wethUsd.toFixed(2)}`);
+    ronUsd = data?.ronin?.usd || 0;
+    wethUsd = data?.ethereum?.usd || 0;
+    if (ronUsd > 0 && wethUsd > 0) {
+      cachedRates = { ronUsd, wethUsd, fetchedAt: Date.now() };
+      console.log(`[Marketplace] CoinGecko rates: RON=$${ronUsd.toFixed(6)}, WETH=$${wethUsd.toFixed(2)}`);
       return cachedRates;
     }
   } catch (err) {
     console.warn("[Marketplace] CoinGecko failed:", (err as Error).message);
   }
 
-  // Last resort fallback
-  cachedRates = { ronUsd: 0.5, wethUsd: 2500, fetchedAt: Date.now() };
-  console.warn("[Marketplace] Using fallback rates: RON=$0.50, WETH=$2500");
+  // Fallback: Ronin Marketplace GraphQL for WETH only (RON value from this API is wrong)
+  try {
+    const data = (await gqlFetch(`
+      query GetExchangeRate {
+        exchangeRate {
+          eth { usd }
+        }
+      }
+    `)) as { exchangeRate: { eth: { usd: string } } };
+
+    if (data?.exchangeRate) {
+      const gqlWethUsd = parseFloat(data.exchangeRate.eth?.usd || "0");
+      if (gqlWethUsd > 0) {
+        wethUsd = gqlWethUsd;
+      }
+    }
+  } catch (err) {
+    console.warn("[Marketplace] Ronin GraphQL WETH rate failed:", (err as Error).message);
+  }
+
+  // If we got at least WETH, use known-good RON fallback
+  if (wethUsd > 0) {
+    cachedRates = { ronUsd: ronUsd || 0.096603, wethUsd, fetchedAt: Date.now() };
+    console.log(`[Marketplace] Partial rates: RON=$${cachedRates.ronUsd.toFixed(6)}, WETH=$${wethUsd.toFixed(2)}`);
+    return cachedRates;
+  }
+
+  // Last resort: hardcoded fallback (user-confirmed correct rate)
+  cachedRates = { ronUsd: 0.096603, wethUsd: 2187, fetchedAt: Date.now() };
+  console.warn(`[Marketplace] Using hardcoded fallback rates: RON=$0.096603, WETH=$2187`);
   return cachedRates;
 }
 
@@ -188,6 +198,11 @@ export async function fetchListings(
 ): Promise<ListingInfo[]> {
   const rates = await getExchangeRates();
 
+  // GraphQL API requires name search to be at least 3 characters.
+  // For very short names, skip the name filter and filter results client-side.
+  const safeName = championName.replace(/"/g, '\\"');
+  const useNameFilter = safeName.length >= 3;
+
   const query = `{
     erc721Tokens(
       tokenAddress: "${GA_CARDS_CONTRACT}",
@@ -198,12 +213,13 @@ export async function fetchListings(
       criteria: [
         {name: "Card Type", values: ["MOKI"]},
         {name: "Rarity", values: ["${rarity}"]}
-      ],
-      name: "${championName.replace(/"/g, '\\"')}"
+      ]${useNameFilter ? `,
+      name: "${safeName}"` : ''}
     ) {
       total
       results {
         tokenId
+        name
         order {
           currentPrice
           paymentToken
@@ -217,13 +233,20 @@ export async function fetchListings(
       total: number;
       results: Array<{
         tokenId: string;
+        name?: string;
         order: { currentPrice: string; paymentToken: string } | null;
       }>;
     };
   };
 
   const listings: ListingInfo[] = [];
-  for (const token of data.erc721Tokens.results) {
+  // For short names (< 3 chars), filter results client-side since we couldn't use name filter
+  const nameFilteredResults = useNameFilter
+    ? data.erc721Tokens.results
+    : data.erc721Tokens.results.filter(
+        (t) => t.name?.toLowerCase() === championName.toLowerCase()
+      );
+  for (const token of nameFilteredResults) {
     if (!token.order?.currentPrice) continue;
     const priceRon = weiToRon(token.order.currentPrice);
     const paymentAddr = (token.order.paymentToken || "").toLowerCase();
